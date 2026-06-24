@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Portföy Takip — Altın & Sterlin</title>
+<meta name="description" content="İş Bankası gram altın ve GBP/TRY portföy takip uygulaması. Günlük otomatik veri güncellemesi.">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  /* ── TOKENS ─────────────────────────────────────────── */
+  :root {
+    --bg:        #0d0f12;
+    --surface:   #13171c;
+    --border:    #1f252e;
+    --border2:   #252c37;
+    --text:      #e8eaf0;
+    --muted:     #636b7a;
+    --gold:      #d4a847;
+    --gold-dim:  rgba(212,168,71,.12);
+    --gbp:       #5b8eff;
+    --gbp-dim:   rgba(91,142,255,.12);
+    --green:     #34c78a;
+    --red:       #f06060;
+    --green-bg:  rgba(52,199,138,.1);
+    --red-bg:    rgba(240,96,96,.1);
+    --radius:    10px;
+    --font:      'Inter', system-ui, -apple-system, sans-serif;
+  }
+
+  /* ── RESET ───────────────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 14px;
+    line-height: 1.6;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ── LAYOUT ──────────────────────────────────────────── */
+  .page { max-width: 1200px; margin: 0 auto; padding: 28px 20px 60px; }
+
+  /* ── MASTHEAD ────────────────────────────────────────── */
+  .masthead {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 32px;
+    flex-wrap: wrap;
+  }
+  .masthead-title {
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: -.4px;
+    color: var(--text);
+  }
+  .masthead-sub {
+    font-size: 13px;
+    color: var(--muted);
+    margin-top: 3px;
+  }
+  .masthead-meta {
+    text-align: right;
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.8;
+  }
+  .masthead-meta strong { color: var(--text); }
+
+  /* ── DIVIDER ─────────────────────────────────────────── */
+  .divider {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 28px 0;
+  }
+
+  /* ── SECTION LABEL ───────────────────────────────────── */
+  .section-label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+  .section-label .dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .section-label h2 {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -.2px;
+  }
+  .section-label .badge {
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: .3px;
+    text-transform: uppercase;
+    margin-left: auto;
+  }
+
+  /* ── METRICS GRID ────────────────────────────────────── */
+  .metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+  .metric {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+  }
+  .metric .lbl {
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: .5px;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .metric .val {
+    font-size: 21px;
+    font-weight: 600;
+    letter-spacing: -.5px;
+    color: var(--text);
+    line-height: 1;
+  }
+  .metric .sub {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 5px;
+  }
+  .pos { color: var(--green) !important; }
+  .neg { color: var(--red)   !important; }
+
+  /* ── CHART CARD ──────────────────────────────────────── */
+  .chart-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+  .chart-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .chart-ttl { font-size: 13px; font-weight: 500; color: var(--muted); }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; }
+  .leg-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted); }
+  .leg-dot { width: 8px; height: 8px; border-radius: 2px; }
+  .chart-wrap { position: relative; height: 200px; }
+
+  /* ── TABLE ───────────────────────────────────────────── */
+  .tbl-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .tbl-head {
+    display: grid;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    font-size: 11px;
+    color: var(--muted);
+    font-weight: 500;
+    letter-spacing: .4px;
+    text-transform: uppercase;
+  }
+  .tbl-row {
+    display: grid;
+    padding: 9px 16px;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+    align-items: center;
+    transition: background .1s;
+  }
+  .tbl-row:last-child { border-bottom: none; }
+  .tbl-row:hover { background: rgba(255,255,255,.03); }
+
+  /* gold table columns */
+  .gold-cols { grid-template-columns: 1.1fr 1fr 1fr 1.2fr 1.1fr; }
+  /* gbp table columns */
+  .gbp-cols  { grid-template-columns: 1.1fr 1fr 1fr 1.2fr 1.1fr; }
+
+  .ta-r { text-align: right; }
+
+  .pnl-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 5px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .pnl-pos { background: var(--green-bg); color: var(--green); }
+  .pnl-neg { background: var(--red-bg);   color: var(--red);   }
+
+  /* ── STATUS BAR ──────────────────────────────────────── */
+  .status-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 28px;
+  }
+  .pulse {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--green);
+  }
+
+  /* ── FOOTER ──────────────────────────────────────────── */
+  .footer {
+    margin-top: 48px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--muted);
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .footer a { color: var(--muted); text-decoration: none; }
+  .footer a:hover { color: var(--text); }
+
+  /* ── RESPONSIVE ──────────────────────────────────────── */
+  @media (max-width: 640px) {
+    .masthead { flex-direction: column; }
+    .masthead-meta { text-align: left; }
+    .metrics { grid-template-columns: repeat(2, 1fr); }
+    .gold-cols, .gbp-cols { grid-template-columns: 1fr 1fr 1fr; }
+    .col-alis-h, .col-alis,
+    .col-satis-h, .col-satis { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- MASTHEAD -->
+  <header class="masthead">
+    <div>
+      <div class="masthead-title">Portföy Takip</div>
+      <div class="masthead-sub">İş Bankası Gram Altın · GBP/TRY Serbest Piyasa</div>
+    </div>
+    <div class="masthead-meta">
+      <div>Veri kaynağı: <strong>canlidoviz.com</strong></div>
+      <div>Son güncelleme: <strong id="lastUpdate">—</strong></div>
+      <div>Her gün 18:00'de otomatik güncellenir</div>
+    </div>
+  </header>
+
+  <div class="status-bar">
+    <span class="pulse"></span>
+    <span id="statusMsg">Veriler yükleniyor...</span>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════ -->
+  <!-- BÖLÜM 1 — ALTIN                                       -->
+  <!-- ══════════════════════════════════════════════════════ -->
+  <div class="section-label">
+    <span class="dot" style="background:var(--gold)"></span>
+    <h2>İş Bankası Gram Altın · 45 XAU</h2>
+    <span class="badge" id="goldBadge"
+      style="background:var(--gold-dim);color:var(--gold)">
+      Yükleniyor...
+    </span>
+  </div>
+
+  <div class="metrics">
+    <div class="metric">
+      <div class="lbl">Başlangıç</div>
+      <div class="val">27.03.2026</div>
+      <div class="sub">6.689,22 TL/gr · 45 XAU</div>
+    </div>
+    <div class="metric">
+      <div class="lbl">Maliyet</div>
+      <div class="val">301.015</div>
+      <div class="sub">TL (45 × 6.689,22)</div>
+    </div>
+    <div class="metric">
+      <div class="lbl">Güncel Alış</div>
+      <div class="val" id="gAlis">—</div>
+      <div class="sub">TL/gram</div>
+    </div>
+    <div class="metric">
+      <div class="lbl">Güncel Satış</div>
+      <div class="val" id="gSatis">—</div>
+      <div class="sub">TL/gram</div>
+    </div>
+    <div class="metric">
+      <div class="lbl">Portföy Değeri</div>
+      <div class="val" id="gDeger">—</div>
+      <div class="sub">45 XAU × satış</div>
+    </div>
+    <div class="metric">
+      <div class="lbl">Kâr / Zarar</div>
+      <div class="val" id="gPnl">—</div>
+      <div class="sub" id="gPnlPct">—</div>
+    </div>
+  </div>
+
+  <div class="chart-card">
+    <div class="chart-top">
+      <span class="chart-ttl">Portföy değeri (TL) ve gram fiyatı (TL/gr)</span>
+      <div class="legend">
+        <span class="leg-item"><span class="leg-dot" style="background:var(--gold)"></span>Portföy TL</span>
+        <span class="leg-item"><span class="leg-dot" style="background:rgba(212,168,71,.45)"></span>Satış TL/gr</span>
+        <span class="leg-item"><span class="leg-dot" style="background:rgba(212,168,71,.25)"></span>Alış TL/gr</span>
+      </div>
+    </div>
+    <div class="chart-wrap"><canvas id="goldChart"></canvas></div>
+  </div>
+
+  <div class="tbl-card">
+    <div class="tbl-head gold-cols">
+      <span>Tarih</span>
+      <span class="ta-r col-alis-h">Alış</span>
+      <span class="ta-r col-satis-h">Satış</span>
+      <span class="ta-r">Portföy (TL)</span>
+      <span class="ta-r">Kâr / Zarar</span>
+    </div>
+    <div id="goldTable"></div>
+  </div>
+
+  <hr class="divider">
+
+  <!-- ══════════════════════════════════════════════════════ -->
+  <!-- BÖLÜM 2 — GBP                                         -->
+  <!-- ══════════════════════════════════════════════════════ -->
+  <div class="section-label">
+    <span class="dot" style="background:var(--gbp)"></span>
+    <h2>GBP/TRY Serbest Piyasa · 700 GBP</h2>
+    <span class="badge" id="gbpBadge"
+      style="background:var(--gbp-dim);color:var(--gbp)">
+      Yükleniyor...
+    </span>
+  </div>
+
+  <div class="metrics">
+    <div class="metric">
+      <div class="lbl">Başlangıç</div>
+      <div class="val">23.02.2026</div>
+      <div class="sub">57,45 TL/GBP · 700 GBP</div>
+    </div>
+    <div class="metric">
+      <div class="lbl">Maliyet</div>
+      <div class="val" id="gbpMaliyet">—</div>
+      <div class="sub">TL (700 × başl. satış)</div>
+    </div>
+    <div class="metric">
+      <div class="lbl">Güncel Alış</div>
+      <div class="val" id="bAlis">—</div>
+      <div class="sub">TL/GBP</div>
+    </div>
+    <div class="metric">
+      <div class="lbl">Güncel Satış</div>
+      <div class="val" id="bSatis">—</div>
+      <div class="sub">TL/GBP</div>
+    </div>
+    <div class="metric">
+      <div class="lbl">Portföy Değeri</div>
+      <div class="val" id="bDeger">—</div>
+      <div class="sub">700 GBP × satış</div>
+    </div>
+    <div class="metric">
+      <div class="lbl">Kâr / Zarar</div>
+      <div class="val" id="bPnl">—</div>
+      <div class="sub" id="bPnlPct">—</div>
+    </div>
+  </div>
+
+  <div class="chart-card">
+    <div class="chart-top">
+      <span class="chart-ttl">Portföy değeri (TL) ve GBP/TRY kuru</span>
+      <div class="legend">
+        <span class="leg-item"><span class="leg-dot" style="background:var(--gbp)"></span>Portföy TL</span>
+        <span class="leg-item"><span class="leg-dot" style="background:rgba(91,142,255,.5)"></span>Satış TL/GBP</span>
+        <span class="leg-item"><span class="leg-dot" style="background:rgba(91,142,255,.25)"></span>Alış TL/GBP</span>
+      </div>
+    </div>
+    <div class="chart-wrap"><canvas id="gbpChart"></canvas></div>
+  </div>
+
+  <div class="tbl-card">
+    <div class="tbl-head gbp-cols">
+      <span>Tarih</span>
+      <span class="ta-r col-alis-h">Alış</span>
+      <span class="ta-r col-satis-h">Satış</span>
+      <span class="ta-r">Portföy (TL)</span>
+      <span class="ta-r">Kâr / Zarar</span>
+    </div>
+    <div id="gbpTable"></div>
+  </div>
+
+  <footer class="footer">
+    <span>Portföy Takip · İş Bankası Gram Altın &amp; GBP/TRY</span>
+    <span>Veri: <a href="https://canlidoviz.com" target="_blank" rel="noopener">canlidoviz.com</a> · Günlük 18:00 güncelleme</span>
+  </footer>
+
+</div><!-- /page -->
+
+<script>
+// ── CONFIG ────────────────────────────────────────────────
+const GOLD_XAU    = 45;
+const GOLD_START  = 6689.22;
+const GOLD_COST   = GOLD_XAU * GOLD_START; // 301,014.90
+
+const GBP_AMOUNT  = 700;
+const GBP_START_DATE = '2026-02-23';
+
+// ── HELPERS ───────────────────────────────────────────────
+const fmt  = n => n == null ? '—' : Math.round(n).toLocaleString('tr-TR');
+const fmtD = n => n == null ? '—' : n.toLocaleString('tr-TR', {minimumFractionDigits:2, maximumFractionDigits:2});
+const dd   = s => { const [y,m,d] = s.split('-'); return `${d}.${m}.${y}`; };
+const sign = n => n >= 0 ? '+' : '';
+
+// ── CHARTS ───────────────────────────────────────────────
+let goldChart, gbpChart;
+
+function buildChart(id, labels, portfolioVals, satisDizi, alisDizi, color) {
+  const ctx = document.getElementById(id).getContext('2d');
+  return new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Portföy (TL)',
+          data: portfolioVals,
+          borderColor: color,
+          backgroundColor: color.replace(')', ', .08)').replace('rgb', 'rgba'),
+          fill: true,
+          tension: 0.35,
+          pointRadius: 2.5,
+          borderWidth: 2,
+          yAxisID: 'y1'
+        },
+        {
+          label: 'Satış',
+          data: satisDizi,
+          borderColor: color.replace(')', ', .6)').replace('rgb', 'rgba'),
+          borderDash: [5,3],
+          fill: false,
+          tension: 0.35,
+          pointRadius: 0,
+          borderWidth: 1.5,
+          yAxisID: 'y2'
+        },
+        {
+          label: 'Alış',
+          data: alisDizi,
+          borderColor: color.replace(')', ', .3)').replace('rgb', 'rgba'),
+          borderDash: [2,3],
+          fill: false,
+          tension: 0.35,
+          pointRadius: 0,
+          borderWidth: 1,
+          yAxisID: 'y2'
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#1a2030',
+          borderColor: '#2a3348',
+          borderWidth: 1,
+          titleColor: '#9aa5b8',
+          bodyColor: '#e8eaf0',
+          padding: 10,
+          callbacks: {
+            label: ctx => {
+              const v = ctx.parsed.y;
+              if (ctx.datasetIndex === 0) return ` Portföy: ${Math.round(v).toLocaleString('tr-TR')} TL`;
+              if (ctx.datasetIndex === 1) return ` Satış: ${v.toLocaleString('tr-TR', {minimumFractionDigits:2})} TL`;
+              return ` Alış: ${v.toLocaleString('tr-TR', {minimumFractionDigits:2})} TL`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          ticks: {
+            maxRotation: 45,
+            autoSkip: true,
+            maxTicksLimit: 12,
+            font: { size: 10 },
+            color: '#636b7a'
+          },
+          grid: { color: 'rgba(255,255,255,.04)' }
+        },
+        y1: {
+          position: 'left',
+          ticks: {
+            callback: v => Math.round(v / 1000) + 'K',
+            font: { size: 10 },
+            color
+          },
+          grid: { color: 'rgba(255,255,255,.04)' }
+        },
+        y2: {
+          position: 'right',
+          ticks: {
+            callback: v => Math.round(v).toLocaleString('tr-TR'),
+            font: { size: 10 },
+            color: '#636b7a'
+          },
+          grid: { drawOnChartArea: false }
+        }
+      }
+    }
+  });
+}
+
+// ── RENDER GOLD ───────────────────────────────────────────
+function renderGold(data) {
+  const last = data[data.length - 1];
+  const portDeger = last.satis * GOLD_XAU;
+  const pnl = portDeger - GOLD_COST;
+  const pct = (pnl / GOLD_COST * 100).toFixed(2);
+
+  document.getElementById('gAlis').textContent   = fmtD(last.alis);
+  document.getElementById('gSatis').textContent  = fmtD(last.satis);
+  document.getElementById('gDeger').textContent  = fmt(portDeger);
+  document.getElementById('gPnl').textContent    = sign(pnl) + fmt(pnl) + ' TL';
+  document.getElementById('gPnl').className      = 'val ' + (pnl >= 0 ? 'pos' : 'neg');
+  document.getElementById('gPnlPct').textContent = sign(pnl) + pct + '%';
+  document.getElementById('gPnlPct').className   = pnl >= 0 ? 'sub pos' : 'sub neg';
+
+  const badge = document.getElementById('goldBadge');
+  badge.textContent = sign(pnl) + pct + '%';
+  badge.className = 'badge';
+  badge.style.background = pnl >= 0 ? 'rgba(52,199,138,.12)' : 'rgba(240,96,96,.12)';
+  badge.style.color = pnl >= 0 ? 'var(--green)' : 'var(--red)';
+
+  // Chart
+  if (goldChart) goldChart.destroy();
+  goldChart = buildChart(
+    'goldChart',
+    data.map(r => dd(r.date)),
+    data.map(r => Math.round(r.satis * GOLD_XAU)),
+    data.map(r => r.satis),
+    data.map(r => r.alis),
+    'rgb(212,168,71)'
+  );
+
+  // Table (last 30, newest first)
+  const tbody = document.getElementById('goldTable');
+  const rows = [...data].reverse().slice(0, 30);
+  tbody.innerHTML = rows.map(r => {
+    const pv  = r.satis * GOLD_XAU;
+    const p   = pv - GOLD_COST;
+    const pct = (p / GOLD_COST * 100).toFixed(2);
+    const cls = p >= 0 ? 'pnl-badge pnl-pos' : 'pnl-badge pnl-neg';
+    return `<div class="tbl-row gold-cols">
+      <span>${dd(r.date)}</span>
+      <span class="ta-r col-alis">${fmtD(r.alis)}</span>
+      <span class="ta-r col-satis">${fmtD(r.satis)}</span>
+      <span class="ta-r">${fmt(pv)}</span>
+      <span class="ta-r"><span class="${cls}">${sign(p)}${fmt(p)} TL</span> <small style="color:var(--muted)">${sign(p)}${pct}%</small></span>
+    </div>`;
+  }).join('');
+}
+
+// ── RENDER GBP ────────────────────────────────────────────
+function renderGbp(data) {
+  // Start cost = first record's satis
+  const startEntry = data.find(r => r.date === GBP_START_DATE) || data[0];
+  const GBP_COST = GBP_AMOUNT * startEntry.satis;
+
+  document.getElementById('gbpMaliyet').textContent = fmt(GBP_COST);
+
+  const last = data[data.length - 1];
+  const portDeger = last.satis * GBP_AMOUNT;
+  const pnl = portDeger - GBP_COST;
+  const pct = (pnl / GBP_COST * 100).toFixed(2);
+
+  document.getElementById('bAlis').textContent   = fmtD(last.alis);
+  document.getElementById('bSatis').textContent  = fmtD(last.satis);
+  document.getElementById('bDeger').textContent  = fmt(portDeger);
+  document.getElementById('bPnl').textContent    = sign(pnl) + fmt(pnl) + ' TL';
+  document.getElementById('bPnl').className      = 'val ' + (pnl >= 0 ? 'pos' : 'neg');
+  document.getElementById('bPnlPct').textContent = sign(pnl) + pct + '%';
+  document.getElementById('bPnlPct').className   = pnl >= 0 ? 'sub pos' : 'sub neg';
+
+  const badge = document.getElementById('gbpBadge');
+  badge.textContent = sign(pnl) + pct + '%';
+  badge.className = 'badge';
+  badge.style.background = pnl >= 0 ? 'rgba(52,199,138,.12)' : 'rgba(240,96,96,.12)';
+  badge.style.color = pnl >= 0 ? 'var(--green)' : 'var(--red)';
+
+  // Chart
+  if (gbpChart) gbpChart.destroy();
+  gbpChart = buildChart(
+    'gbpChart',
+    data.map(r => dd(r.date)),
+    data.map(r => Math.round(r.satis * GBP_AMOUNT)),
+    data.map(r => r.satis),
+    data.map(r => r.alis),
+    'rgb(91,142,255)'
+  );
+
+  // Table
+  const tbody = document.getElementById('gbpTable');
+  const rows = [...data].reverse().slice(0, 30);
+  tbody.innerHTML = rows.map(r => {
+    const pv  = r.satis * GBP_AMOUNT;
+    const p   = pv - GBP_COST;
+    const pct = (p / GBP_COST * 100).toFixed(2);
+    const cls = p >= 0 ? 'pnl-badge pnl-pos' : 'pnl-badge pnl-neg';
+    return `<div class="tbl-row gbp-cols">
+      <span>${dd(r.date)}</span>
+      <span class="ta-r col-alis">${fmtD(r.alis)}</span>
+      <span class="ta-r col-satis">${fmtD(r.satis)}</span>
+      <span class="ta-r">${fmt(pv)}</span>
+      <span class="ta-r"><span class="${cls}">${sign(p)}${fmt(p)} TL</span> <small style="color:var(--muted)">${sign(p)}${pct}%</small></span>
+    </div>`;
+  }).join('');
+}
+
+// ── BOOT ─────────────────────────────────────────────────
+async function boot() {
+  try {
+    const [goldResp, gbpResp] = await Promise.all([
+      fetch('data/gold.json'),
+      fetch('data/gbp.json')
+    ]);
+    const goldData = await goldResp.json();
+    const gbpData  = await gbpResp.json();
+
+    renderGold(goldData);
+    renderGbp(gbpData);
+
+    const lastGold = goldData[goldData.length - 1].date;
+    const lastGbp  = gbpData[gbpData.length - 1].date;
+    const lastDate = lastGold > lastGbp ? lastGold : lastGbp;
+    document.getElementById('lastUpdate').textContent = dd(lastDate);
+    document.getElementById('statusMsg').textContent =
+      `Veriler güncellendi — son kayıt: ${dd(lastDate)}`;
+  } catch(e) {
+    document.getElementById('statusMsg').textContent = 'Veri yüklenemedi: ' + e.message;
+  }
+}
+
+boot();
+</script>
+</body>
+</html>
