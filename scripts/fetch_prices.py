@@ -90,17 +90,14 @@ def fetch_gold() -> dict:
 
 def fetch_gbp() -> dict:
     prompt = (
-        "Bugün GBP/TRY (İngiliz Sterlini / Türk Lirası) kuru nedir? "
-        "Şu kaynaklardan birini kullanarak bul: "
-        "1) https://www.tcmb.gov.tr/kurlar/today.xml (Merkez Bankası resmi XML) "
-        "2) https://finance.yahoo.com/quote/GBPTRY=X/ "
-        "3) https://www.xe.com/currencyconverter/convert/?Amount=1&From=GBP&To=TRY "
-        "Alış (bid) ve satış (ask) kurunu bul. "
-        "Eğer tek kur varsa aynı değeri hem alış hem satış olarak kullan. "
+        "Türkiye İş Bankası İngiliz Sterlini (GBP) alış ve satış kuru bugün nedir? "
+        "canlidoviz.com/doviz-kurlari/is-bankasi/ingiliz-sterlini veya "
+        "anlikaltinfiyatlari.com/banka/is-bankasi adresinden kontrol et. "
+        "Bayi alış ve bayi satış fiyatlarını bul. "
         "SADECE şu JSON formatında cevap ver, başka hiçbir metin ekleme: "
         '{"alis": <sayi>, "satis": <sayi>, "tarih": "<YYYY-MM-DD>"} '
         "Ondalık için nokta kullan, virgül kullanma. "
-        "Örnek: {\"alis\": 62.15, \"satis\": 62.45, \"tarih\": \"2026-06-24\"}"
+        "Örnek: {\"alis\": 61.50, \"satis\": 63.20, \"tarih\": \"2026-06-24\"}"
     )
     raw = claude_fetch(prompt)
     d = extract_json(raw)
