@@ -12,6 +12,7 @@ permissions:
 jobs:
   fetch-and-commit:
     runs-on: ubuntu-latest
+
     steps:
       - name: Repoyu çek
         uses: actions/checkout@v4
@@ -20,6 +21,16 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: API key kontrolü
+        run: |
+          if [ -z "${{ secrets.ANTHROPIC_API_KEY }}" ]; then
+            echo "❌ ANTHROPIC_API_KEY secret tanımlı değil!"
+            echo "   Repo → Settings → Secrets and variables → Actions → New repository secret"
+            echo "   İsim: ANTHROPIC_API_KEY   Değer: sk-ant-Smtppl5862!!"
+            exit 1
+          fi
+          echo "✅ ANTHROPIC_API_KEY mevcut."
 
       - name: Fiyatları güncelle
         env:
@@ -31,5 +42,6 @@ jobs:
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add data/gold.json data/gbp.json
-          git diff --cached --quiet || git commit -m "chore: $(date +'%Y-%m-%d') fiyat güncellemesi [skip ci]"
+          git diff --cached --quiet && echo "Değişiklik yok, commit atlanıyor." || \
+            git commit -m "chore: $(date +'%Y-%m-%d') fiyat güncellemesi [skip ci]"
           git push
