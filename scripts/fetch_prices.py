@@ -55,6 +55,13 @@ def prev_satis(records):
     vals = [r["satis"] for r in records[-2:] if "satis" in r]
     return sum(vals) / len(vals) if vals else None
 
+def existing_entry(records, today):
+    """JSON'da bugünün mevcut kaydını döndür (varsa)."""
+    for r in records:
+        if r["date"] == today:
+            return r
+    return None
+
 
 # ── TCMB XML ─────────────────────────────────────────────────────────────────
 
@@ -126,15 +133,22 @@ def fetch_isbank_gold():
 def run_gold():
     records = load_json(GOLD_FILE)
     ref = prev_satis(records)
+    prev = existing_entry(records, TODAY)
+
     try:
         entry = fetch_isbank_gold()
         if ref and abs(entry["satis"] - ref) / ref > 0.08:
             log(f"  ⚠  ALTIN: satış {entry['satis']} öncekinden >%8 sapıyor (ref={ref:.2f}) — lütfen kontrol et")
+        # Manuel revizyon varsa kaynak bilgisini koru, değerleri güncelle
+        if prev and prev.get("kaynak", "").endswith("(manuel)"):
+            entry["kaynak"] = entry["kaynak"] + " (manuel üzerine)"
         action = upsert(records, entry)
         save_json(GOLD_FILE, records)
         log(f"  ✅ ALTIN {action}: alış={entry['alis']} satış={entry['satis']} [{entry['kaynak']}]")
     except Exception as e:
         log(f"  ❌ ALTIN HATA: {e}")
+        if prev:
+            log(f"  ℹ  ALTIN: mevcut kayıt korunuyor ({prev['date']})")
 
 
 # ── GBP ──────────────────────────────────────────────────────────────────────
@@ -158,6 +172,7 @@ def fetch_isbank_gbp():
 def run_gbp():
     records = load_json(GBP_FILE)
     ref = prev_satis(records)
+    prev = existing_entry(records, TODAY)  # mevcut kaydı sakla
 
     # 1. TCMB — birincil, her zaman çalışır
     tcmb = None
@@ -184,17 +199,33 @@ def run_gbp():
     # Kaydı birleştir
     entry = {"date": TODAY, "kaynak": "İşBankası+TCMB"}
 
-    isbank_s = isbank or tcmb   # İşBankası yoksa TCMB'yi kullan
-    entry["alis"]          = isbank_s["alis"]
-    entry["satis"]         = isbank_s["satis"]
-    entry["isbank_alis"]   = isbank["alis"]  if isbank else None
-    entry["isbank_satis"]  = isbank["satis"] if isbank else None
-    entry["tcmb_alis"]     = tcmb["alis"]    if tcmb   else None
-    entry["tcmb_satis"]    = tcmb["satis"]   if tcmb   else None
+    isbank_s = isbank or tcmb
+    entry["alis"]   = isbank_s["alis"]
+    entry["satis"]  = isbank_s["satis"]
 
-    if isbank and tcmb:
-        entry["fark_satis"] = round(isbank["satis"] - tcmb["satis"], 4)
-        entry["fark_alis"]  = round(isbank["alis"]  - tcmb["alis"],  4)
+    # İşBankası başarısız olduysa — mevcut kayıttaki manuel değeri koru, null yazma
+    if isbank:
+        entry["isbank_alis"]  = isbank["alis"]
+        entry["isbank_satis"] = isbank["satis"]
+    elif prev:
+        entry["isbank_alis"]  = prev.get("isbank_alis")
+        entry["isbank_satis"] = prev.get("isbank_satis")
+        # Manuel değer varsa onu ana alis/satis olarak da koru
+        if entry["isbank_alis"] is not None:
+            entry["alis"]  = entry["isbank_alis"]
+            entry["satis"] = entry["isbank_satis"]
+        entry["kaynak"] = "TCMB (İşBankası önceki korundu)"
+        log(f"  ℹ  GBP İşBankası: önceki değer korundu (alış={entry['isbank_alis']} satış={entry['isbank_satis']})")
+    else:
+        entry["isbank_alis"]  = None
+        entry["isbank_satis"] = None
+
+    entry["tcmb_alis"]  = tcmb["alis"]  if tcmb else (prev.get("tcmb_alis")  if prev else None)
+    entry["tcmb_satis"] = tcmb["satis"] if tcmb else (prev.get("tcmb_satis") if prev else None)
+
+    if entry.get("isbank_satis") and entry.get("tcmb_satis"):
+        entry["fark_satis"] = round(entry["isbank_satis"] - entry["tcmb_satis"], 4)
+        entry["fark_alis"]  = round((entry["isbank_alis"] or 0) - entry["tcmb_alis"], 4)
         log(f"  📊 GBP Fark (İşBankası−TCMB): satış=+{entry['fark_satis']:.4f} alış=+{entry['fark_alis']:.4f}")
 
     action = upsert(records, entry)
