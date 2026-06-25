@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fiyat Revizyonu</title>
+<style>
+  :root {
+    --bg:       #0d0f12;
+    --surface:  #13171c;
+    --surface2: #181d24;
+    --border:   #1f252e;
+    --border2:  #252c37;
+    --text:     #e8eaf0;
+    --muted:    #636b7a;
+    --gold:     #d4a847;
+    --gold-dim: rgba(212,168,71,.12);
+    --gbp:      #5b8eff;
+    --gbp-dim:  rgba(91,142,255,.12);
+    --green:    #34c78a;
+    --red:      #f06060;
+    --green-bg: rgba(52,199,138,.1);
+    --red-bg:   rgba(240,96,96,.1);
+    --orange:   #f5a623;
+    --radius:   10px;
+    --font:     'Inter', system-ui, -apple-system, sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 14px;
+    line-height: 1.6;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+  .page { max-width: 760px; margin: 0 auto; padding: 36px 20px 80px; }
+
+  /* ── HEADER ── */
+  .header { margin-bottom: 32px; }
+  .header-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+  }
+  .title { font-size: 20px; font-weight: 600; letter-spacing: -.4px; }
+  .back-link {
+    font-size: 12px;
+    color: var(--muted);
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    transition: color .15s;
+  }
+  .back-link:hover { color: var(--text); }
+  .subtitle { font-size: 13px; color: var(--muted); }
+
+  /* ── ALERT ── */
+  .alert {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 16px;
+    border-radius: var(--radius);
+    font-size: 13px;
+    margin-bottom: 28px;
+    line-height: 1.5;
+  }
+  .alert-warn { background: rgba(245,166,35,.1); border: 1px solid rgba(245,166,35,.25); color: #f5c842; }
+  .alert-err  { background: var(--red-bg);        border: 1px solid rgba(240,96,96,.3);  color: var(--red); display:none; }
+  .alert-ok   { background: var(--green-bg);      border: 1px solid rgba(52,199,138,.3); color: var(--green); display:none; }
+  .alert-icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+
+  /* ── SETUP CARD ── */
+  .setup-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-bottom: 24px;
+  }
+  .setup-card h3 {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    letter-spacing: .5px;
+    text-transform: uppercase;
+    margin-bottom: 14px;
+  }
+  .field { margin-bottom: 12px; }
+  .field label {
+    display: block;
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 5px;
+    letter-spacing: .2px;
+  }
+  .field input {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    border-radius: 7px;
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 13px;
+    padding: 9px 12px;
+    outline: none;
+    transition: border-color .15s;
+  }
+  .field input:focus { border-color: var(--gbp); }
+  .field input::placeholder { color: var(--muted); }
+  .field-hint {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+  /* ── SECTION ── */
+  .section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    margin-bottom: 16px;
+  }
+  .section-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+  }
+  .dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+  .section-head h2 { font-size: 14px; font-weight: 600; }
+  .section-head .current-val {
+    margin-left: auto;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .section-head .current-val strong { color: var(--text); }
+  .section-body { padding: 18px; }
+
+  /* ── PRICE ROW ── */
+  .price-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+  .price-row:last-child { margin-bottom: 0; }
+
+  /* ── SOURCE ROW ── */
+  .source-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 0;
+    border-top: 1px solid var(--border);
+    margin-top: 4px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .source-row select {
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    border-radius: 6px;
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 12px;
+    padding: 4px 8px;
+    outline: none;
+    cursor: pointer;
+  }
+
+  /* ── ACTIONS ── */
+  .actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 28px;
+    flex-wrap: wrap;
+  }
+  .btn {
+    padding: 10px 22px;
+    border-radius: 8px;
+    border: none;
+    font-family: var(--font);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: opacity .15s, transform .1s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .btn:active { transform: scale(.98); }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .btn-primary {
+    background: var(--gbp);
+    color: #fff;
+  }
+  .btn-primary:hover:not(:disabled) { opacity: .88; }
+  .btn-secondary {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border2);
+  }
+  .btn-secondary:hover { background: var(--surface2); }
+
+  /* ── PROGRESS ── */
+  .progress {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    color: var(--muted);
+    margin-top: 16px;
+  }
+  .spinner {
+    width: 16px; height: 16px;
+    border: 2px solid var(--border2);
+    border-top-color: var(--gbp);
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+    flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── DIFF ── */
+  .diff-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 5px;
+  }
+  .diff-arrow { color: var(--orange); font-size: 11px; }
+  .diff-new { color: var(--text); font-weight: 500; }
+
+  /* ── DATE BADGE ── */
+  .date-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    background: var(--gold-dim);
+    border: 1px solid rgba(212,168,71,.2);
+    border-radius: 20px;
+    font-size: 12px;
+    color: var(--gold);
+    margin-bottom: 20px;
+  }
+
+  hr { border: none; border-top: 1px solid var(--border); margin: 24px 0; }
+
+  @media (max-width: 520px) {
+    .price-row { grid-template-columns: 1fr; }
+    .field-row  { grid-template-columns: 1fr; }
+    .actions { flex-direction: column; }
+    .btn { justify-content: center; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- HEADER -->
+  <div class="header">
+    <div class="header-top">
+      <div class="title">✏️ Fiyat Revizyonu</div>
+      <a href="index.html" class="back-link">← Portföye dön</a>
+    </div>
+    <div class="subtitle">Bugünün otomatik çekilen fiyatlarını düzeltin ve PR branch'e kaydedin.</div>
+  </div>
+
+  <div id="alertErr" class="alert alert-err">
+    <span class="alert-icon">⚠️</span>
+    <span id="alertErrMsg">Bir hata oluştu.</span>
+  </div>
+  <div id="alertOk" class="alert alert-ok">
+    <span class="alert-icon">✅</span>
+    <span id="alertOkMsg">Başarıyla kaydedildi.</span>
+  </div>
+
+  <!-- GITHUB SETUP -->
+  <div class="setup-card">
+    <h3>GitHub Bağlantısı</h3>
+    <div class="field-row">
+      <div class="field">
+        <label>Repo (kullanıcı/repo)</label>
+        <input type="text" id="ghRepo" placeholder="ipapila/portfoy-takip" value="ipapila/portfoy-takip">
+      </div>
+      <div class="field">
+        <label>Branch</label>
+        <input type="text" id="ghBranch" placeholder="price-update/2026-06-25" id="ghBranch">
+        <div class="field-hint">PR açıldığında branch adı otomatik dolar — aşağıdan URL parametresiyle de gelebilir.</div>
+      </div>
+    </div>
+    <div class="field">
+      <label>GitHub Personal Access Token <span style="color:var(--red)">*</span></label>
+      <input type="password" id="ghToken" placeholder="ghp_xxxxxxxxxxxx">
+      <div class="field-hint">Repo → Contents write yetkisi yeterli. Token bu sayfada saklanmaz, sadece bu oturumda kullanılır.</div>
+    </div>
+  </div>
+
+  <!-- TARIH -->
+  <div id="dateBadge" class="date-badge">📅 <span id="dateLabel">—</span></div>
+
+  <div class="alert alert-warn">
+    <span class="alert-icon">⚠️</span>
+    <span>Değiştirdiğiniz alanlar JSON dosyasına doğrudan yazılır. Boş bıraktığınız alanlar mevcut değeri korur. Kaydetmeden önce fiyatları teyit edin.</span>
+  </div>
+
+  <!-- ALTIN -->
+  <div class="section">
+    <div class="section-head">
+      <span class="dot" style="background:var(--gold)"></span>
+      <h2>Gram Altın (XAU)</h2>
+      <span class="current-val" id="goldCurrentLabel">Yükleniyor...</span>
+    </div>
+    <div class="section-body">
+      <div class="price-row">
+        <div class="field">
+          <label>Alış (TL/gram)</label>
+          <input type="number" id="goldAlis" placeholder="Mevcut değeri korumak için boş bırak" step="0.01">
+          <div class="diff-row" id="goldAlisDiff"></div>
+        </div>
+        <div class="field">
+          <label>Satış (TL/gram)</label>
+          <input type="number" id="goldSatis" placeholder="Mevcut değeri korumak için boş bırak" step="0.01">
+          <div class="diff-row" id="goldSatisDiff"></div>
+        </div>
+      </div>
+      <div class="source-row">
+        <span>Kaynak:</span>
+        <select id="goldKaynak">
+          <option value="İşBankası (manuel)">İşBankası (manuel)</option>
+          <option value="İşBankası (web)">İşBankası (web)</option>
+          <option value="Diğer">Diğer</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- GBP -->
+  <div class="section">
+    <div class="section-head">
+      <span class="dot" style="background:var(--gbp)"></span>
+      <h2>GBP/TRY</h2>
+      <span class="current-val" id="gbpCurrentLabel">Yükleniyor...</span>
+    </div>
+    <div class="section-body">
+      <div class="price-row">
+        <div class="field">
+          <label>İşBankası Alış</label>
+          <input type="number" id="gbpIsbankAlis" placeholder="Boş = değişmez" step="0.0001">
+          <div class="diff-row" id="gbpAlisDiff"></div>
+        </div>
+        <div class="field">
+          <label>İşBankası Satış</label>
+          <input type="number" id="gbpIsbankSatis" placeholder="Boş = değişmez" step="0.0001">
+          <div class="diff-row" id="gbpSatisDiff"></div>
+        </div>
+      </div>
+      <div class="price-row">
+        <div class="field">
+          <label>TCMB Alış</label>
+          <input type="number" id="gbpTcmbAlis" placeholder="Boş = değişmez" step="0.0001">
+        </div>
+        <div class="field">
+          <label>TCMB Satış</label>
+          <input type="number" id="gbpTcmbSatis" placeholder="Boş = değişmez" step="0.0001">
+        </div>
+      </div>
+      <div class="field-hint" style="margin-top:4px">
+        Fark (fark_satis / fark_alis) kaydet butonuna basıldığında otomatik hesaplanır.
+      </div>
+    </div>
+  </div>
+
+  <!-- ACTIONS -->
+  <div class="actions">
+    <button class="btn btn-primary" id="btnSave" onclick="save()">
+      💾 PR Branch'e Kaydet
+    </button>
+    <button class="btn btn-secondary" onclick="loadCurrentValues()">
+      🔄 Mevcut değerleri yenile
+    </button>
+    <button class="btn btn-secondary" onclick="clearInputs()">
+      ✕ Temizle
+    </button>
+  </div>
+
+  <div class="progress" id="progress">
+    <div class="spinner"></div>
+    <span id="progressMsg">İşlem yapılıyor...</span>
+  </div>
+
+</div><!-- /page -->
+
+<script>
+// ── URL PARAM → branch otomatik doldur ──────────────────
+(function() {
+  const params = new URLSearchParams(window.location.search);
+  const branch = params.get('branch');
+  const repo   = params.get('repo');
+  if (branch) document.getElementById('ghBranch').value = branch;
+  if (repo)   document.getElementById('ghRepo').value   = repo;
+})();
+
+// ── GLOBALS ─────────────────────────────────────────────
+let goldEntry = null;
+let gbpEntry  = null;
+
+const fmtD = n => n == null ? '—' : (+n).toLocaleString('tr-TR', {minimumFractionDigits: 2, maximumFractionDigits: 4});
+const today = new Date().toISOString().slice(0, 10);
+
+document.getElementById('dateLabel').textContent = today;
+
+// ── LOAD CURRENT VALUES ──────────────────────────────────
+async function loadCurrentValues() {
+  try {
+    const [gr, br] = await Promise.all([
+      fetch('data/gold.json?_=' + Date.now()),
+      fetch('data/gbp.json?_='  + Date.now())
+    ]);
+    const goldData = await gr.json();
+    const gbpData  = await br.json();
+
+    goldEntry = goldData.find(r => r.date === today) || goldData[goldData.length - 1];
+    gbpEntry  = gbpData.find(r  => r.date === today) || gbpData[gbpData.length - 1];
+
+    document.getElementById('goldCurrentLabel').innerHTML =
+      `Alış <strong>${fmtD(goldEntry.alis)}</strong> · Satış <strong>${fmtD(goldEntry.satis)}</strong>`;
+    document.getElementById('gbpCurrentLabel').innerHTML =
+      `İşBank <strong>${fmtD(gbpEntry.isbank_satis || gbpEntry.satis)}</strong> · TCMB <strong>${fmtD(gbpEntry.tcmb_satis)}</strong>`;
+
+    // diff göstergelerini temizle (değer girilince güncellenir)
+    setupDiffListeners();
+  } catch(e) {
+    showErr('JSON dosyaları yüklenemedi: ' + e.message + '. Sayfanın repo kökünde çalıştığından emin olun.');
+  }
+}
+
+// ── DIFF GÖSTERGELER ─────────────────────────────────────
+function diffHtml(oldVal, newVal) {
+  if (!newVal || !oldVal) return '';
+  const diff = newVal - oldVal;
+  const sign = diff >= 0 ? '+' : '';
+  const cls  = diff >= 0 ? 'color:var(--green)' : 'color:var(--red)';
+  return `<span class="diff-arrow">→</span>
+          <span class="diff-new">${fmtD(newVal)}</span>
+          <span style="${cls};font-size:11px">(${sign}${fmtD(diff)})</span>`;
+}
+
+function setupDiffListeners() {
+  const pairs = [
+    ['goldAlis',       'goldAlisDiff',  () => goldEntry?.alis],
+    ['goldSatis',      'goldSatisDiff', () => goldEntry?.satis],
+    ['gbpIsbankAlis',  'gbpAlisDiff',   () => gbpEntry?.isbank_alis  || gbpEntry?.alis],
+    ['gbpIsbankSatis', 'gbpSatisDiff',  () => gbpEntry?.isbank_satis || gbpEntry?.satis],
+  ];
+  pairs.forEach(([inputId, diffId, getOld]) => {
+    const el   = document.getElementById(inputId);
+    const diff = document.getElementById(diffId);
+    el.addEventListener('input', () => {
+      const v = parseFloat(el.value);
+      diff.innerHTML = isNaN(v) ? '' : diffHtml(getOld(), v);
+    });
+  });
+}
+
+// ── GITHUB API HELPERS ───────────────────────────────────
+async function ghGet(path) {
+  const token = document.getElementById('ghToken').value.trim();
+  const repo  = document.getElementById('ghRepo').value.trim();
+  const r = await fetch(`https://api.github.com/repos/${repo}/${path}`, {
+    headers: {
+      'Authorization': 'Bearer ' + token,
+      'Accept': 'application/vnd.github+json'
+    }
+  });
+  if (!r.ok) throw new Error(`GitHub GET ${path} → ${r.status} ${r.statusText}`);
+  return r.json();
+}
+
+async function ghPut(path, body) {
+  const token = document.getElementById('ghToken').value.trim();
+  const repo  = document.getElementById('ghRepo').value.trim();
+  const r = await fetch(`https://api.github.com/repos/${repo}/${path}`, {
+    method: 'PUT',
+    headers: {
+      'Authorization': 'Bearer ' + token,
+      'Accept': 'application/vnd.github+json',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body)
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(`GitHub PUT ${path} → ${r.status}: ${err.message || r.statusText}`);
+  }
+  return r.json();
+}
+
+// ── SAVE ────────────────────────────────────────────────
+async function save() {
+  hideAlerts();
+
+  const token  = document.getElementById('ghToken').value.trim();
+  const repo   = document.getElementById('ghRepo').value.trim();
+  const branch = document.getElementById('ghBranch').value.trim();
+
+  if (!token)  return showErr('GitHub token girilmedi.');
+  if (!repo)   return showErr('Repo adı girilmedi.');
+  if (!branch) return showErr('Branch adı girilmedi.');
+  if (!goldEntry || !gbpEntry) return showErr('Önce mevcut değerleri yükleyin (Yenile butonuna basın).');
+
+  setProgress(true, 'Mevcut JSON dosyaları alınıyor...');
+
+  try {
+    // Dosyaları oku (SHA için)
+    const [goldFile, gbpFile] = await Promise.all([
+      ghGet(`contents/data/gold.json?ref=${encodeURIComponent(branch)}`),
+      ghGet(`contents/data/gbp.json?ref=${encodeURIComponent(branch)}`)
+    ]);
+
+    const goldData = JSON.parse(atob(goldFile.content.replace(/\n/g, '')));
+    const gbpData  = JSON.parse(atob(gbpFile.content.replace(/\n/g, '')));
+
+    // ── ALTIN güncelle ──
+    let goldChanged = false;
+    const goldIdx = goldData.findIndex(r => r.date === today);
+    const gEntry  = goldIdx >= 0 ? { ...goldData[goldIdx] } : { ...goldEntry, date: today };
+
+    const gAlis  = parseFloat(document.getElementById('goldAlis').value);
+    const gSatis = parseFloat(document.getElementById('goldSatis').value);
+
+    if (!isNaN(gAlis))  { gEntry.alis  = gAlis;  goldChanged = true; }
+    if (!isNaN(gSatis)) { gEntry.satis = gSatis;  goldChanged = true; }
+    if (goldChanged) {
+      gEntry.kaynak = document.getElementById('goldKaynak').value;
+      if (goldIdx >= 0) goldData[goldIdx] = gEntry;
+      else { goldData.push(gEntry); goldData.sort((a,b) => a.date.localeCompare(b.date)); }
+    }
+
+    // ── GBP güncelle ──
+    let gbpChanged = false;
+    const gbpIdx = gbpData.findIndex(r => r.date === today);
+    const bEntry = gbpIdx >= 0 ? { ...gbpData[gbpIdx] } : { ...gbpEntry, date: today };
+
+    const bIbAlis  = parseFloat(document.getElementById('gbpIsbankAlis').value);
+    const bIbSatis = parseFloat(document.getElementById('gbpIsbankSatis').value);
+    const bTcAlis  = parseFloat(document.getElementById('gbpTcmbAlis').value);
+    const bTcSatis = parseFloat(document.getElementById('gbpTcmbSatis').value);
+
+    if (!isNaN(bIbAlis))  { bEntry.isbank_alis  = bIbAlis;  bEntry.alis  = bIbAlis;  gbpChanged = true; }
+    if (!isNaN(bIbSatis)) { bEntry.isbank_satis = bIbSatis; bEntry.satis = bIbSatis; gbpChanged = true; }
+    if (!isNaN(bTcAlis))  { bEntry.tcmb_alis    = bTcAlis;  gbpChanged = true; }
+    if (!isNaN(bTcSatis)) { bEntry.tcmb_satis   = bTcSatis; gbpChanged = true; }
+
+    if (gbpChanged) {
+      // Farkı yeniden hesapla
+      const ibS = bEntry.isbank_satis || bEntry.satis;
+      const tcS = bEntry.tcmb_satis;
+      if (ibS && tcS) {
+        bEntry.fark_satis = +((ibS - tcS).toFixed(4));
+        bEntry.fark_alis  = +((( bEntry.isbank_alis || bEntry.alis) - (bEntry.tcmb_alis || 0)).toFixed(4));
+      }
+      bEntry.kaynak = 'İşBankası+TCMB (manuel)';
+      if (gbpIdx >= 0) gbpData[gbpIdx] = bEntry;
+      else { gbpData.push(bEntry); gbpData.sort((a,b) => a.date.localeCompare(b.date)); }
+    }
+
+    if (!goldChanged && !gbpChanged) {
+      setProgress(false);
+      return showErr('Hiçbir alan değiştirilmedi. Düzeltmek istediğiniz değerleri girin.');
+    }
+
+    // ── Commit ──
+    const commitMsg = `fix: ${today} fiyat manuel revizyonu`;
+
+    if (goldChanged) {
+      setProgress(true, 'data/gold.json güncelleniyor...');
+      await ghPut(`contents/data/gold.json`, {
+        message: commitMsg,
+        content: btoa(unescape(encodeURIComponent(JSON.stringify(goldData, null, 2)))),
+        sha: goldFile.sha,
+        branch
+      });
+    }
+
+    if (gbpChanged) {
+      setProgress(true, 'data/gbp.json güncelleniyor...');
+      // SHA'yı yeniden al (gold commit sonrası değişmiş olabilir)
+      const freshGbp = await ghGet(`contents/data/gbp.json?ref=${encodeURIComponent(branch)}`);
+      await ghPut(`contents/data/gbp.json`, {
+        message: commitMsg,
+        content: btoa(unescape(encodeURIComponent(JSON.stringify(gbpData, null, 2)))),
+        sha: freshGbp.sha,
+        branch
+      });
+    }
+
+    setProgress(false);
+    const parts = [];
+    if (goldChanged) parts.push(`Altın alış: ${fmtD(gEntry.alis)} · satış: ${fmtD(gEntry.satis)}`);
+    if (gbpChanged)  parts.push(`GBP İşBank satış: ${fmtD(bEntry.isbank_satis)}`);
+    showOk(`✅ Kaydedildi! ${parts.join(' — ')}. PR'ı şimdi merge edebilirsiniz.`);
+    await loadCurrentValues(); // Ekrandaki değerleri tazele
+
+  } catch(e) {
+    setProgress(false);
+    showErr(e.message);
+  }
+}
+
+// ── UI HELPERS ───────────────────────────────────────────
+function setProgress(show, msg) {
+  const el = document.getElementById('progress');
+  el.style.display = show ? 'flex' : 'none';
+  if (msg) document.getElementById('progressMsg').textContent = msg;
+  document.getElementById('btnSave').disabled = show;
+}
+
+function showErr(msg) {
+  const el = document.getElementById('alertErr');
+  document.getElementById('alertErrMsg').textContent = msg;
+  el.style.display = 'flex';
+  el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function showOk(msg) {
+  const el = document.getElementById('alertOk');
+  document.getElementById('alertOkMsg').textContent = msg;
+  el.style.display = 'flex';
+  el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function hideAlerts() {
+  document.getElementById('alertErr').style.display = 'none';
+  document.getElementById('alertOk').style.display  = 'none';
+}
+
+function clearInputs() {
+  ['goldAlis','goldSatis','gbpIsbankAlis','gbpIsbankSatis','gbpTcmbAlis','gbpTcmbSatis']
+    .forEach(id => { document.getElementById(id).value = ''; });
+  ['goldAlisDiff','goldSatisDiff','gbpAlisDiff','gbpSatisDiff']
+    .forEach(id => { document.getElementById(id).innerHTML = ''; });
+  hideAlerts();
+}
+
+// ── BOOT ────────────────────────────────────────────────
+loadCurrentValues();
+</script>
+</body>
+</html>
