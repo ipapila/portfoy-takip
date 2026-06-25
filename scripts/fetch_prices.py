@@ -1,13 +1,10 @@
 #!/usr/bin/env python3
 """
-Günlük fiyat güncelleme scripti.
-GitHub Actions tarafından her gün çalıştırılır.
-
-Veri kaynakları:
-  - TCMB XML  → https://www.tcmb.gov.tr/kurlar/today.xml  (GBP resmi kur)
-  - Claude web search → İş Bankası gram altın + İş Bankası GBP kuru
-  - Doğrulama: değerler makul aralıkta mı kontrol edilir
-  - Fallback: İş Bankası başarısız olursa TCMB verisi kullanılır
+Günlük fiyat çekme scripti.
+  - Altın : Claude web araması → İş Bankası gram altın bayi alış/satış
+  - GBP   : TCMB XML (birincil, güvenilir) + Claude web araması (İşBankası bayi kuru)
+Her ikisi de data/gold.json ve data/gbp.json'a eklenir/güncellenir.
+Manuel revizyon için GitHub PR akışı kullanılır.
 """
 
 import json
@@ -23,34 +20,29 @@ GOLD_FILE = "data/gold.json"
 GBP_FILE  = "data/gbp.json"
 TODAY     = date.today().isoformat()
 
-# Makul aralıklar — bu dışına çıkan veri reddedilir
-GOLD_MIN, GOLD_MAX = 3000.0, 20000.0
-GBP_MIN,  GBP_MAX  = 30.0,   200.0
+GOLD_MIN, GOLD_MAX = 3000.0, 25000.0
+GBP_MIN,  GBP_MAX  = 30.0,  200.0
 
 
-# ── YARDIMCI FONKSİYONLAR ────────────────────────────────────────────────────
+# ── YARDIMCILAR ───────────────────────────────────────────────────────────────
 
-def log(msg: str) -> None:
+def log(msg):
     print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}", flush=True)
 
+def validate(val, vmin, vmax, label):
+    if not (vmin <= val <= vmax):
+        raise ValueError(f"{label} aralık dışı: {val} (beklenen {vmin}–{vmax})")
+    return val
 
-def validate(value: float, vmin: float, vmax: float, label: str) -> float:
-    if not (vmin <= value <= vmax):
-        raise ValueError(f"{label} değeri aralık dışı: {value} (beklenen {vmin}–{vmax})")
-    return value
-
-
-def load_json(path: str) -> list:
+def load_json(path):
     with open(path, encoding="utf-8") as f:
         return json.load(f)
 
-
-def save_json(path: str, data: list) -> None:
+def save_json(path, data):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
-
-def upsert(records: list, entry: dict) -> str:
+def upsert(records, entry):
     for i, r in enumerate(records):
         if r["date"] == entry["date"]:
             records[i] = entry
@@ -59,35 +51,32 @@ def upsert(records: list, entry: dict) -> str:
     records.sort(key=lambda x: x["date"])
     return "EKLENDİ"
 
-
-def prev_value(records: list, key: str) -> float | None:
-    """Son iki kaydın ortalaması — ani sapma tespiti için referans."""
-    vals = [r[key] for r in records[-2:] if key in r]
+def prev_satis(records):
+    vals = [r["satis"] for r in records[-2:] if "satis" in r]
     return sum(vals) / len(vals) if vals else None
 
 
-# ── TCMB XML (güvenilir, makine okunabilir) ──────────────────────────────────
+# ── TCMB XML ─────────────────────────────────────────────────────────────────
 
-def fetch_tcmb_gbp() -> dict:
-    """TCMB günlük kur XML'inden GBP alış/satış çeker."""
+def fetch_tcmb_gbp():
     url = "https://www.tcmb.gov.tr/kurlar/today.xml"
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
     with urllib.request.urlopen(req, timeout=15) as resp:
         tree = ET.parse(resp)
     root = tree.getroot()
-    for currency in root.findall("Currency"):
-        if currency.get("CurrencyCode") == "GBP":
-            alis  = float(currency.findtext("ForexBuying")  or currency.findtext("BanknoteBuying")  or "0")
-            satis = float(currency.findtext("ForexSelling") or currency.findtext("BanknoteSelling") or "0")
+    for cur in root.findall("Currency"):
+        if cur.get("CurrencyCode") == "GBP":
+            alis  = float(cur.findtext("ForexBuying")  or cur.findtext("BanknoteBuying")  or 0)
+            satis = float(cur.findtext("ForexSelling") or cur.findtext("BanknoteSelling") or 0)
             validate(alis,  GBP_MIN, GBP_MAX, "TCMB GBP alış")
             validate(satis, GBP_MIN, GBP_MAX, "TCMB GBP satış")
-            return {"date": TODAY, "alis": round(alis, 4), "satis": round(satis, 4), "kaynak": "TCMB"}
+            return {"alis": round(alis, 4), "satis": round(satis, 4)}
     raise ValueError("TCMB XML'de GBP bulunamadı")
 
 
-# ── CLAUDE WEB SEARCH ────────────────────────────────────────────────────────
+# ── CLAUDE WEB ARAMASI ───────────────────────────────────────────────────────
 
-def claude_fetch(prompt: str) -> str:
+def claude_search(prompt):
     payload = json.dumps({
         "model": "claude-sonnet-4-6",
         "max_tokens": 512,
@@ -108,124 +97,121 @@ def claude_fetch(prompt: str) -> str:
         data = json.loads(resp.read())
     return " ".join(b["text"] for b in data.get("content", []) if b.get("type") == "text")
 
-
-def extract_json(text: str) -> dict:
+def extract_json(text):
     m = re.search(r'\{[^}]+\}', text)
     if not m:
         raise ValueError(f"JSON bulunamadı: {text[:300]}")
     return json.loads(m.group())
 
 
-def fetch_isbank_gold() -> dict:
+# ── ALTIN ─────────────────────────────────────────────────────────────────────
+
+def fetch_isbank_gold():
     prompt = (
         f"Bugün {TODAY} tarihinde İş Bankası gram altın BAYİ ALIŞ ve BAYİ SATIŞ fiyatı nedir? "
-        "Şu adresi kontrol et: canlidoviz.com/altin-fiyatlari/is-bankasi/gram-altin — "
-        "sayfada 'BAYİ ALIŞ' ve 'BAYİ SATIŞ' etiketli değerleri bul. "
-        "SADECE JSON döndür, başka metin yok: "
+        "canlidoviz.com/altin-fiyatlari/is-bankasi/gram-altin sayfasını kontrol et. "
+        "Yalnızca şu JSON'u döndür, başka metin yok: "
         '{"alis": <sayi>, "satis": <sayi>, "tarih": "<YYYY-MM-DD>"} '
-        "Ondalık ayırıcı olarak nokta kullan."
+        "Ondalık için nokta kullan."
     )
-    raw = claude_fetch(prompt)
-    d   = extract_json(raw)
-    alis  = validate(float(d["alis"]),  GOLD_MIN, GOLD_MAX, "İşbank altın alış")
-    satis = validate(float(d["satis"]), GOLD_MIN, GOLD_MAX, "İşbank altın satış")
-    return {"date": d.get("tarih", TODAY), "alis": alis, "satis": satis, "kaynak": "İşBankası"}
-
-
-def fetch_isbank_gbp() -> dict:
-    prompt = (
-        f"Bugün {TODAY} tarihinde Türkiye İş Bankası'nın İngiliz Sterlini (GBP) "
-        "BAYİ ALIŞ ve BAYİ SATIŞ kuru nedir? "
-        "Şu adresi kontrol et: canlidoviz.com/doviz-kurlari/is-bankasi/ingiliz-sterlini — "
-        "sayfada 'BAYİ ALIŞ' ve 'BAYİ SATIŞ' etiketli TL değerlerini bul. "
-        "SADECE JSON döndür, başka metin yok: "
-        '{"alis": <sayi>, "satis": <sayi>, "tarih": "<YYYY-MM-DD>"} '
-        "Ondalık ayırıcı olarak nokta kullan. Örnek: {\"alis\": 61.50, \"satis\": 63.80, \"tarih\": \"2026-06-24\"}"
-    )
-    raw = claude_fetch(prompt)
-    d   = extract_json(raw)
-    alis  = validate(float(d["alis"]),  GBP_MIN, GBP_MAX, "İşbank GBP alış")
-    satis = validate(float(d["satis"]), GBP_MIN, GBP_MAX, "İşbank GBP satış")
-    return {"date": d.get("tarih", TODAY), "alis": alis, "satis": satis, "kaynak": "İşBankası"}
-
-
-# ── ALTIN ────────────────────────────────────────────────────────────────────
+    raw = claude_search(prompt)
+    d = extract_json(raw)
+    return {
+        "date":   d.get("tarih", TODAY),
+        "alis":   validate(float(d["alis"]),  GOLD_MIN, GOLD_MAX, "Altın alış"),
+        "satis":  validate(float(d["satis"]), GOLD_MIN, GOLD_MAX, "Altın satış"),
+        "kaynak": "İşBankası (web)"
+    }
 
 def run_gold():
     records = load_json(GOLD_FILE)
-    ref = prev_value(records, "satis")
-
+    ref = prev_satis(records)
     try:
         entry = fetch_isbank_gold()
-        # Ani sapma kontrolü: önceki değerden %8'den fazla fark varsa uyar
         if ref and abs(entry["satis"] - ref) / ref > 0.08:
-            log(f"  ⚠  ALTIN: satış {entry['satis']} önceki referanstan ({ref:.2f}) >%8 sapıyor, yine de kaydediliyor")
+            log(f"  ⚠  ALTIN: satış {entry['satis']} öncekinden >%8 sapıyor (ref={ref:.2f}) — lütfen kontrol et")
         action = upsert(records, entry)
         save_json(GOLD_FILE, records)
-        log(f"  ✅ ALTIN {action} [{entry['kaynak']}]: alış={entry['alis']} satış={entry['satis']}")
+        log(f"  ✅ ALTIN {action}: alış={entry['alis']} satış={entry['satis']} [{entry['kaynak']}]")
     except Exception as e:
         log(f"  ❌ ALTIN HATA: {e}")
 
 
 # ── GBP ──────────────────────────────────────────────────────────────────────
 
+def fetch_isbank_gbp():
+    prompt = (
+        f"Bugün {TODAY} tarihinde İş Bankası İngiliz Sterlini (GBP) "
+        "BAYİ ALIŞ ve BAYİ SATIŞ kuru nedir? "
+        "canlidoviz.com/doviz-kurlari/is-bankasi/ingiliz-sterlini sayfasını kontrol et. "
+        "Yalnızca şu JSON'u döndür, başka metin yok: "
+        '{"alis": <sayi>, "satis": <sayi>, "tarih": "<YYYY-MM-DD>"} '
+        "Ondalık için nokta kullan."
+    )
+    raw = claude_search(prompt)
+    d = extract_json(raw)
+    return {
+        "alis":  validate(float(d["alis"]),  GBP_MIN, GBP_MAX, "GBP alış"),
+        "satis": validate(float(d["satis"]), GBP_MIN, GBP_MAX, "GBP satış"),
+    }
+
 def run_gbp():
     records = load_json(GBP_FILE)
-    ref = prev_value(records, "satis")
+    ref = prev_satis(records)
 
-    # 1. İş Bankası dene
-    isbank_entry = None
+    # 1. TCMB — birincil, her zaman çalışır
+    tcmb = None
     try:
-        isbank_entry = fetch_isbank_gbp()
-        if ref and abs(isbank_entry["satis"] - ref) / ref > 0.08:
-            log(f"  ⚠  GBP İşbank: satış {isbank_entry['satis']} referanstan ({ref:.2f}) >%8 sapıyor")
-        log(f"  ✅ GBP İşBankası: alış={isbank_entry['alis']} satış={isbank_entry['satis']}")
-    except Exception as e:
-        log(f"  ⚠  GBP İşBankası başarısız ({e}), TCMB'ye geçiliyor...")
-
-    # 2. TCMB her zaman çek (karşılaştırma için)
-    tcmb_entry = None
-    try:
-        tcmb_entry = fetch_tcmb_gbp()
-        log(f"  ✅ GBP TCMB    : alış={tcmb_entry['alis']} satış={tcmb_entry['satis']}")
+        tcmb = fetch_tcmb_gbp()
+        log(f"  ✅ GBP TCMB   : alış={tcmb['alis']} satış={tcmb['satis']}")
     except Exception as e:
         log(f"  ❌ GBP TCMB HATA: {e}")
 
-    # 3. Kaydı oluştur: İşbank varsa onu kullan, yoksa TCMB
-    primary = isbank_entry or tcmb_entry
-    if primary is None:
-        log("  ❌ GBP: Her iki kaynak da başarısız, kayıt atlanıyor.")
+    # 2. İşBankası bayi kuru — ikincil
+    isbank = None
+    try:
+        isbank = fetch_isbank_gbp()
+        if ref and abs(isbank["satis"] - ref) / ref > 0.08:
+            log(f"  ⚠  GBP İşBankası: satış {isbank['satis']} öncekinden >%8 sapıyor")
+        log(f"  ✅ GBP İşBankası: alış={isbank['alis']} satış={isbank['satis']}")
+    except Exception as e:
+        log(f"  ⚠  GBP İşBankası başarısız: {e}")
+
+    if tcmb is None and isbank is None:
+        log("  ❌ GBP: Her iki kaynak başarısız, kayıt atlanıyor.")
         return
 
-    # 4. Fark bilgisini ekle
-    entry = dict(primary)
-    entry["date"] = TODAY
-    if isbank_entry and tcmb_entry:
-        entry["isbank_satis"] = isbank_entry["satis"]
-        entry["isbank_alis"]  = isbank_entry["alis"]
-        entry["tcmb_satis"]   = tcmb_entry["satis"]
-        entry["tcmb_alis"]    = tcmb_entry["alis"]
-        entry["fark_satis"]   = round(isbank_entry["satis"] - tcmb_entry["satis"], 4)
-        entry["fark_alis"]    = round(isbank_entry["alis"]  - tcmb_entry["alis"],  4)
-        log(f"  📊 GBP Fark (İşbank−TCMB): satış={entry['fark_satis']:+.4f}, alış={entry['fark_alis']:+.4f}")
+    # Kaydı birleştir
+    entry = {"date": TODAY, "kaynak": "İşBankası+TCMB"}
+
+    isbank_s = isbank or tcmb   # İşBankası yoksa TCMB'yi kullan
+    entry["alis"]          = isbank_s["alis"]
+    entry["satis"]         = isbank_s["satis"]
+    entry["isbank_alis"]   = isbank["alis"]  if isbank else None
+    entry["isbank_satis"]  = isbank["satis"] if isbank else None
+    entry["tcmb_alis"]     = tcmb["alis"]    if tcmb   else None
+    entry["tcmb_satis"]    = tcmb["satis"]   if tcmb   else None
+
+    if isbank and tcmb:
+        entry["fark_satis"] = round(isbank["satis"] - tcmb["satis"], 4)
+        entry["fark_alis"]  = round(isbank["alis"]  - tcmb["alis"],  4)
+        log(f"  📊 GBP Fark (İşBankası−TCMB): satış=+{entry['fark_satis']:.4f} alış=+{entry['fark_alis']:.4f}")
 
     action = upsert(records, entry)
     save_json(GBP_FILE, records)
-    log(f"  💾 GBP {action} [{entry['kaynak']}]")
+    log(f"  💾 GBP {action}")
 
 
 # ── ANA ───────────────────────────────────────────────────────────────────────
 
 def main():
     if not API_KEY:
-        print("HATA: ANTHROPIC_API_KEY ortam değişkeni eksik.", file=sys.stderr)
+        print("HATA: ANTHROPIC_API_KEY eksik.", file=sys.stderr)
         sys.exit(1)
-
-    log(f"=== Güncelleme başlıyor — {TODAY} ===")
+    log(f"=== Fiyat çekme başlıyor — {TODAY} ===")
     run_gold()
     run_gbp()
     log("=== Tamamlandı ===")
-
 
 if __name__ == "__main__":
     main()
