@@ -73,7 +73,6 @@ jobs:
           bl = gbp[-1]
 
           def fmt(val, fallback=None):
-              """Sayısal değeri ,.2f formatında döndürür; None ise fallback veya '—'."""
               v = val if val is not None else fallback
               if v is None:
                   return "—"
@@ -83,8 +82,16 @@ jobs:
                   return str(v)
 
           def fmts(val):
-              """String olabilecek değerleri güvenli döndürür."""
               return str(val) if val is not None else "—"
+
+          branch = os.environ.get("BRANCH", "")
+          repo   = os.environ.get("GITHUB_REPOSITORY", "")
+
+          # revizyon.html linki — branch URL parametresiyle
+          revizyon_url = (
+              f"https://{repo.split('/')[0]}.github.io/{repo.split('/')[1]}/revizyon.html"
+              f"?branch={branch}&repo={repo}"
+          )
 
           body = f"""## 📊 Günlük Fiyat Güncellemesi — {gl['date']}
 
@@ -104,11 +111,11 @@ jobs:
 
           ---
           ✅ Fiyatlar doğruysa **Merge** et.
-          ✏️ Düzeltme gerekiyorsa `data/gold.json` veya `data/gbp.json` dosyasını bu PR'da düzenle, sonra merge et.
+          ✏️ Fiyatları düzeltmek için → **[Revizyon Sayfasını Aç]({revizyon_url})**
+          &nbsp;&nbsp;&nbsp;_(GitHub token ile düzeltip kaydedebilirsin, sonra bu PR'ı merge et)_
           """
 
           with open(os.environ["GITHUB_ENV"], "a") as f:
-              # multiline için özel syntax
               f.write("PR_BODY<<DELIM\n")
               f.write(body + "\n")
               f.write("DELIM\n")
