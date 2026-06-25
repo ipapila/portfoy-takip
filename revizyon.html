@@ -425,13 +425,23 @@ document.getElementById('dateLabel').textContent = today;
 
 // ── LOAD CURRENT VALUES ──────────────────────────────────
 async function loadCurrentValues() {
+  const token  = document.getElementById('ghToken').value.trim();
+  const repo   = document.getElementById('ghRepo').value.trim();
+  const branch = document.getElementById('ghBranch').value.trim();
+
+  if (!token)  return showErr("Önce GitHub token girin, sonra Yenile'ye basın.");
+  if (!repo)   return showErr('Repo adı girilmedi.');
+  if (!branch) return showErr('Branch adı girilmedi.');
+
   try {
-    const [gr, br] = await Promise.all([
-      fetch('data/gold.json?_=' + Date.now()),
-      fetch('data/gbp.json?_='  + Date.now())
+    const ref = encodeURIComponent(branch);
+    const [goldFile, gbpFile] = await Promise.all([
+      ghGet(`contents/data/gold.json?ref=${ref}`),
+      ghGet(`contents/data/gbp.json?ref=${ref}`)
     ]);
-    const goldData = await gr.json();
-    const gbpData  = await br.json();
+
+    const goldData = JSON.parse(atob(goldFile.content.replace(/\n/g, '')));
+    const gbpData  = JSON.parse(atob(gbpFile.content.replace(/\n/g, '')));
 
     goldEntry = goldData.find(r => r.date === today) || goldData[goldData.length - 1];
     gbpEntry  = gbpData.find(r  => r.date === today) || gbpData[gbpData.length - 1];
@@ -441,10 +451,9 @@ async function loadCurrentValues() {
     document.getElementById('gbpCurrentLabel').innerHTML =
       `İşBank <strong>${fmtD(gbpEntry.isbank_satis || gbpEntry.satis)}</strong> · TCMB <strong>${fmtD(gbpEntry.tcmb_satis)}</strong>`;
 
-    // diff göstergelerini temizle (değer girilince güncellenir)
     setupDiffListeners();
   } catch(e) {
-    showErr('JSON dosyaları yüklenemedi: ' + e.message + '. Sayfanın repo kökünde çalıştığından emin olun.');
+    showErr('Veriler yüklenemedi: ' + e.message);
   }
 }
 
