@@ -1,16 +1,17 @@
-name: Günlük Fiyat Güncelleme
+name: 1 — Günlük Fiyat Çek (PR Aç)
 
 on:
   schedule:
-    # Her gün Türkiye saatiyle 18:00 civarı (UTC 15:00) — borsa kapanışı sonrası
+    # Her gün Türkiye 18:00 (UTC 15:00), Pazartesi–Cuma
     - cron: "0 15 * * 1-5"
-  workflow_dispatch:   # Elle de tetiklenebilir
+  workflow_dispatch:
 
 permissions:
-  contents: write      # data/ JSON dosyalarını commit edebilmek için
+  contents: write
+  pull-requests: write
 
 jobs:
-  fetch-and-commit:
+  fetch-and-pr:
     runs-on: ubuntu-latest
 
     steps:
@@ -26,22 +27,85 @@ jobs:
         run: |
           if [ -z "${{ secrets.ANTHROPIC_API_KEY }}" ]; then
             echo "❌ ANTHROPIC_API_KEY secret tanımlı değil!"
-            echo "   Repo → Settings → Secrets and variables → Actions → New repository secret"
-            echo "   İsim: ANTHROPIC_API_KEY   Değer: sk-ant-..."
             exit 1
           fi
           echo "✅ ANTHROPIC_API_KEY mevcut."
 
-      - name: Fiyatları güncelle
+      - name: Fiyatları çek
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: python scripts/fetch_prices.py
 
-      - name: Değişiklikleri commit et
+      - name: Değişiklik var mı?
+        id: check
         run: |
+          git diff --quiet data/gold.json data/gbp.json && echo "changed=false" >> $GITHUB_OUTPUT || echo "changed=true" >> $GITHUB_OUTPUT
+
+      - name: Güncelleme branch'i oluştur ve push et
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          DATE=$(date +'%Y-%m-%d')
+          BRANCH="price-update/$DATE"
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
           git add data/gold.json data/gbp.json
-          git diff --cached --quiet && echo "Değişiklik yok, commit atlanıyor." || \
-            git commit -m "chore: $(date +'%Y-%m-%d') fiyat güncellemesi [skip ci]"
-          git push
+          git commit -m "chore: $DATE fiyat güncellemesi (revizyon için)"
+          git push origin "$BRANCH"
+          echo "BRANCH=$BRANCH" >> $GITHUB_ENV
+          echo "DATE=$DATE"     >> $GITHUB_ENV
+
+      - name: Fiyat özetini hazırla
+        if: steps.check.outputs.changed == 'true'
+        id: summary
+        run: |
+          python3 << 'PYEOF'
+          import json, os
+
+          with open("data/gold.json") as f:
+              gold = json.load(f)
+          with open("data/gbp.json") as f:
+              gbp = json.load(f)
+
+          gl = gold[-1]
+          bl = gbp[-1]
+
+          body = f"""## 📊 Günlük Fiyat Güncellemesi — {gl['date']}
+
+          ### 🥇 İş Bankası Gram Altın
+          | | Değer |
+          |---|---|
+          | Alış | **{gl['alis']:,.2f} TL** |
+          | Satış | **{gl['satis']:,.2f} TL** |
+          | Kaynak | {gl.get('kaynak', '—')} |
+
+          ### 💷 GBP/TRY
+          | | İşBankası | TCMB |
+          |---|---|---|
+          | Alış | **{bl.get('isbank_alis', bl['alis']):,.2f} TL** | {bl.get('tcmb_alis', '—')} TL |
+          | Satış | **{bl.get('isbank_satis', bl['satis']):,.2f} TL** | {bl.get('tcmb_satis', '—')} TL |
+          | Fark (satış) | **+{bl.get('fark_satis', 0):,.2f} TL** | — |
+
+          ---
+          ✅ Fiyatlar doğruysa **Merge** et.
+          ✏️ Düzeltme gerekiyorsa `data/gold.json` veya `data/gbp.json` dosyasını bu PR'da düzenle, sonra merge et.
+          """
+
+          with open(os.environ["GITHUB_ENV"], "a") as f:
+              # multiline için özel syntax
+              f.write("PR_BODY<<DELIM\n")
+              f.write(body + "\n")
+              f.write("DELIM\n")
+          PYEOF
+
+      - name: PR aç
+        if: steps.check.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr create \
+            --title "💰 $(date +'%Y-%m-%d') Fiyat Güncellemesi — Revizyon Gerekebilir" \
+            --body "$PR_BODY" \
+            --base main \
+            --head "$BRANCH" \
+            --label "price-update" || true

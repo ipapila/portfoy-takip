@@ -1,0 +1,26 @@
+name: 2 — PR Merge Sonrası Deploy
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+    paths:
+      - "data/gold.json"
+      - "data/gbp.json"
+
+permissions:
+  contents: write
+
+jobs:
+  confirm-deploy:
+    # Sadece price-update/* branch'inden merge edilmiş PR'larda çalış
+    if: |
+      github.event.pull_request.merged == true &&
+      startsWith(github.event.pull_request.head.ref, 'price-update/')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Merge onaylandı
+        run: |
+          echo "✅ PR merge edildi — veriler main branch'e indi."
+          echo "GitHub Pages otomatik olarak güncellenecek."
