@@ -13,8 +13,7 @@ permissions:
 
 jobs:
   confirm-deploy:
-    # Sadece price-update/* branch'inden merge edilmiş PR'larda çalış
-    if: |
+    if: >-
       github.event.pull_request.merged == true &&
       startsWith(github.event.pull_request.head.ref, 'price-update/')
     runs-on: ubuntu-latest
