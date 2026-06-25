@@ -1021,14 +1021,14 @@
   },
   {
     "date": "2026-06-25",
+    "kaynak": "İşBankası+TCMB (manuel)",
     "alis": 60.4909,
     "satis": 61.9725,
-    "tcmb_alis": 61.68,
-    "tcmb_satis": 61.8,
     "isbank_alis": 60.4909,
     "isbank_satis": 61.9725,
+    "tcmb_alis": 61.68,
+    "tcmb_satis": 61.8,
     "fark_satis": 0.1725,
-    "fark_alis": -1.1891,
-    "kaynak": "İşBankası+TCMB (manuel)"
+    "fark_alis": -1.1891
   }
 ]
