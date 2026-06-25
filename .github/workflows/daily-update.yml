@@ -2,8 +2,8 @@ name: 1 — Günlük Fiyat Çek (PR Aç)
 
 on:
   schedule:
-    # Her gün Türkiye 18:00 (UTC 15:00), Pazartesi–Cuma
-    - cron: "0 15 * * 1-5"
+    # Her gün Türkiye 08:00 (UTC 05:00), Pazartesi–Cuma
+    - cron: "0 5 * * 1-5"
   workflow_dispatch:
 
 permissions:
