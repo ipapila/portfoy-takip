@@ -70,21 +70,35 @@ jobs:
           gl = gold[-1]
           bl = gbp[-1]
 
+          def fmt(val, fallback=None):
+              """Sayısal değeri ,.2f formatında döndürür; None ise fallback veya '—'."""
+              v = val if val is not None else fallback
+              if v is None:
+                  return "—"
+              try:
+                  return f"{float(v):,.2f}"
+              except (TypeError, ValueError):
+                  return str(v)
+
+          def fmts(val):
+              """String olabilecek değerleri güvenli döndürür."""
+              return str(val) if val is not None else "—"
+
           body = f"""## 📊 Günlük Fiyat Güncellemesi — {gl['date']}
 
           ### 🥇 İş Bankası Gram Altın
           | | Değer |
           |---|---|
-          | Alış | **{gl['alis']:,.2f} TL** |
-          | Satış | **{gl['satis']:,.2f} TL** |
-          | Kaynak | {gl.get('kaynak', '—')} |
+          | Alış | **{fmt(gl.get('alis'))} TL** |
+          | Satış | **{fmt(gl.get('satis'))} TL** |
+          | Kaynak | {fmts(gl.get('kaynak'))} |
 
           ### 💷 GBP/TRY
           | | İşBankası | TCMB |
           |---|---|---|
-          | Alış | **{bl.get('isbank_alis', bl['alis']):,.2f} TL** | {bl.get('tcmb_alis', '—')} TL |
-          | Satış | **{bl.get('isbank_satis', bl['satis']):,.2f} TL** | {bl.get('tcmb_satis', '—')} TL |
-          | Fark (satış) | **+{bl.get('fark_satis', 0):,.2f} TL** | — |
+          | Alış | **{fmt(bl.get('isbank_alis'), bl.get('alis'))} TL** | {fmt(bl.get('tcmb_alis'))} TL |
+          | Satış | **{fmt(bl.get('isbank_satis'), bl.get('satis'))} TL** | {fmt(bl.get('tcmb_satis'))} TL |
+          | Fark (satış) | **+{fmt(bl.get('fark_satis'), 0)} TL** | — |
 
           ---
           ✅ Fiyatlar doğruysa **Merge** et.
