@@ -119,6 +119,17 @@
     color: var(--muted);
     margin-top: 4px;
   }
+  .token-saved {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: var(--green);
+    margin-top: 4px;
+    opacity: 0;
+    transition: opacity .3s;
+  }
+  .token-saved.show { opacity: 1; }
   .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
   /* ── SECTION ── */
@@ -305,7 +316,8 @@
     <div class="field">
       <label>GitHub Personal Access Token <span style="color:var(--red)">*</span></label>
       <input type="password" id="ghToken" placeholder="ghp_xxxxxxxxxxxx">
-      <div class="field-hint">Repo → Contents write yetkisi yeterli. Token bu sayfada saklanmaz, sadece bu oturumda kullanılır.</div>
+      <div class="field-hint">Repo → Contents write yetkisi yeterli. Token bu tarayıcıda (localStorage) saklanır — her seferinde yeniden girmen gerekmez.</div>
+      <div class="token-saved" id="tokenSavedBadge">✓ Tarayıcıya kaydedildi</div>
     </div>
   </div>
 
@@ -415,14 +427,29 @@
 
   // Token localStorage'dan yükle
   const saved = localStorage.getItem('gh_token');
-  if (saved) document.getElementById('ghToken').value = saved;
+  if (saved) {
+    document.getElementById('ghToken').value = saved;
+    // Sayfa açılışında token varsa sessizce göster
+    const badge = document.getElementById('tokenSavedBadge');
+    badge.textContent = '✓ Tarayıcıdan yüklendi';
+    badge.classList.add('show');
+    setTimeout(() => { badge.classList.remove('show'); badge.textContent = '✓ Tarayıcıya kaydedildi'; }, 2000);
+  }
 })();
 
 // Token değişince otomatik kaydet
-document.getElementById('ghToken').addEventListener('change', function() {
+document.getElementById('ghToken').addEventListener('input', function() {
   const v = this.value.trim();
-  if (v) localStorage.setItem('gh_token', v);
-  else   localStorage.removeItem('gh_token');
+  if (v) {
+    localStorage.setItem('gh_token', v);
+    const badge = document.getElementById('tokenSavedBadge');
+    badge.classList.add('show');
+    clearTimeout(badge._t);
+    badge._t = setTimeout(() => badge.classList.remove('show'), 2500);
+  } else {
+    localStorage.removeItem('gh_token');
+    document.getElementById('tokenSavedBadge').classList.remove('show');
+  }
 });
 
 // ── GLOBALS ─────────────────────────────────────────────
