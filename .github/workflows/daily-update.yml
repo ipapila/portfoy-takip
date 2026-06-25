@@ -2,8 +2,8 @@ name: 1 — Günlük Fiyat Çek (PR Aç)
 
 on:
   schedule:
-    # Her gün Türkiye 08:00 (UTC 05:00), Pazartesi–Cuma
-    - cron: "0 5 * * 1-5"
+    # Her gün Türkiye 18:00 (UTC 15:00), Pazartesi–Cuma
+    - cron: "0 15 * * 1-5"
   workflow_dispatch:
 
 permissions:
@@ -35,6 +35,49 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: python scripts/fetch_prices.py
+
+      - name: Manuel veriyi koru (main'deki bugün kaydı varsa)
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          python3 << 'PYEOF'
+          import json, subprocess, sys
+          from datetime import date
+          TODAY = date.today().isoformat()
+
+          def load(path):
+              with open(path) as f: return json.load(f)
+          def save(path, data):
+              with open(path, 'w') as f: json.dump(data, f, ensure_ascii=False, indent=2)
+
+          # main branch'ten mevcut veriyi çek
+          def get_main(path):
+              r = subprocess.run(['git', 'show', f'origin/main:{path}'], capture_output=True, text=True)
+              if r.returncode != 0: return []
+              return json.loads(r.stdout)
+
+          for fname in ['data/gold.json', 'data/gbp.json']:
+              local = load(fname)
+              main  = get_main(fname)
+              main_today = next((r for r in main  if r['date'] == TODAY), None)
+              local_today = next((r for r in local if r['date'] == TODAY), None)
+
+              if main_today and main_today.get('kaynak','').endswith('(manuel)'):
+                  print(f"  ℹ {fname}: main'de manuel kayıt var, korunuyor.")
+                  if local_today:
+                      # workflow verisini manuel veriyle birleştir: manuel alanlar öncelikli
+                      merged = {**local_today, **{k:v for k,v in main_today.items() if v is not None}}
+                      merged['kaynak'] = main_today['kaynak']
+                      for i,r in enumerate(local):
+                          if r['date'] == TODAY:
+                              local[i] = merged; break
+                  else:
+                      local.append(main_today)
+                      local.sort(key=lambda x: x['date'])
+                  save(fname, local)
+              else:
+                  print(f"  ✓ {fname}: manuel kayıt yok, workflow verisi kullanılıyor.")
+          PYEOF
 
       - name: Değişiklik var mı?
         id: check
