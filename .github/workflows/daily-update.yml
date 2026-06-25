@@ -48,6 +48,8 @@ jobs:
           BRANCH="price-update/$DATE"
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Uzakta aynı isimde branch varsa sil (önceki yarım çalışma kalıntısı)
+          git push origin --delete "$BRANCH" 2>/dev/null || true
           git checkout -b "$BRANCH"
           git add data/gold.json data/gbp.json
           git commit -m "chore: $DATE fiyat güncellemesi (revizyon için)"
