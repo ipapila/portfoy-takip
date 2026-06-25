@@ -27,7 +27,7 @@ jobs:
           if [ -z "${{ secrets.ANTHROPIC_API_KEY }}" ]; then
             echo "❌ ANTHROPIC_API_KEY secret tanımlı değil!"
             echo "   Repo → Settings → Secrets and variables → Actions → New repository secret"
-            echo "   İsim: ANTHROPIC_API_KEY   Değer: sk-ant-Smtppl5862!!"
+            echo "   İsim: ANTHROPIC_API_KEY   Değer: sk-ant-..."
             exit 1
           fi
           echo "✅ ANTHROPIC_API_KEY mevcut."
