@@ -446,7 +446,7 @@
       <button class="btn-sm" onclick="clearToken()">Temizle</button>
     </div>
     <div style="font-size:11px;color:var(--muted);margin-bottom:18px;margin-top:-8px">
-      Repo → Contents write yetkisi yeterli. Token bu oturumda sessionStorage'da tutulur.
+      Repo → Contents write yetkisi yeterli. Token tarayıcıda kalıcı olarak saklanır (localStorage).
     </div>
 
     <!-- Tarih -->
@@ -537,7 +537,7 @@ const fmt  = n => n == null ? '—' : Math.round(n).toLocaleString('tr-TR');
 const fmtD = n => n == null ? '—' : n.toLocaleString('tr-TR', {minimumFractionDigits:2, maximumFractionDigits:4});
 const dd   = s => { const [y,m,d] = s.split('-'); return `${d}.${m}.${y}`; };
 const sign = n => n >= 0 ? '+' : '';
-const _n = new Date(); const today = `${_n.getFullYear()}-${String(_n.getMonth()+1).padStart(2,'0')}-${String(_n.getDate()).padStart(2,'0')}`;
+const today = new Date().toISOString().slice(0, 10);
 
 // ── CHART HELPERS ─────────────────────────────────────────
 let goldChart, gbpChart, gbpSpreadChart;
@@ -704,7 +704,7 @@ boot();
 // ══════════════════════════════════════════
 function openModal() {
   // Token varsa geri doldur
-  const t = localStorage.getItem('gh_token');
+  const t = sessionStorage.getItem('gh_token');
   if (t) document.getElementById('mToken').value = t;
 
   // Bugünün mevcut değerlerini placeholder olarak göster
@@ -743,15 +743,15 @@ function overlayClick(e) {
   if (e.target === document.getElementById('modalOverlay')) closeModal();
 }
 
-function saveToken(v) { if (v) localStorage.setItem('gh_token', v); }
-function clearToken()  { localStorage.removeItem('gh_token'); document.getElementById('mToken').value = ''; }
+function saveToken(v) { if (v) sessionStorage.setItem('gh_token', v); }
+function clearToken()  { sessionStorage.removeItem('gh_token'); document.getElementById('mToken').value = ''; }
 
 // diff hint
 const _origVals = {
-  mGoldAlis:  () => _goldData?.[_goldData.length-1]?.alis,
-  mGoldSatis: () => _goldData?.[_goldData.length-1]?.satis,
-  mGbpIbAlis:  () => { const e=_gbpData?.[_gbpData.length-1]; return e?.isbank_alis||e?.alis; },
-  mGbpIbSatis: () => { const e=_gbpData?.[_gbpData.length-1]; return e?.isbank_satis||e?.satis; },
+  mGoldAlis:  () => { const e=_goldData?.find(r=>r.date===today)||_goldData?.[_goldData.length-1]; return e?.alis; },
+  mGoldSatis: () => { const e=_goldData?.find(r=>r.date===today)||_goldData?.[_goldData.length-1]; return e?.satis; },
+  mGbpIbAlis:  () => { const e=_gbpData?.find(r=>r.date===today)||_gbpData?.[_gbpData.length-1]; return e?.isbank_alis||e?.alis; },
+  mGbpIbSatis: () => { const e=_gbpData?.find(r=>r.date===today)||_gbpData?.[_gbpData.length-1]; return e?.isbank_satis||e?.satis; },
 };
 function showDiff(inputId, hintId) {
   const el   = document.getElementById(inputId);
@@ -810,7 +810,7 @@ async function modalSave() {
       const file = await ghGet('contents/data/gold.json?ref=main', token);
       const data = JSON.parse(atob(file.content.replace(/\n/g,'')));
       const idx  = data.findIndex(r=>r.date===today);
-      const entry= idx>=0 ? {...data[idx]} : {..._goldData[_goldData.length-1], date:today};
+      const entry= idx>=0 ? {...data[idx]} : {date:today};
       if (!isNaN(gAlis))  entry.alis   = gAlis;
       if (!isNaN(gSatis)) entry.satis  = gSatis;
       entry.kaynak = 'İşBankası (manuel)';
