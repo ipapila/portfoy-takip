@@ -405,21 +405,33 @@
 </div><!-- /page -->
 
 <script>
-// ── URL PARAM → branch otomatik doldur ──────────────────
+// ── URL PARAM → branch otomatik doldur + localStorage token ──
 (function() {
   const params = new URLSearchParams(window.location.search);
   const branch = params.get('branch');
   const repo   = params.get('repo');
   if (branch) document.getElementById('ghBranch').value = branch;
   if (repo)   document.getElementById('ghRepo').value   = repo;
+
+  // Token localStorage'dan yükle
+  const saved = localStorage.getItem('gh_token');
+  if (saved) document.getElementById('ghToken').value = saved;
 })();
+
+// Token değişince otomatik kaydet
+document.getElementById('ghToken').addEventListener('change', function() {
+  const v = this.value.trim();
+  if (v) localStorage.setItem('gh_token', v);
+  else   localStorage.removeItem('gh_token');
+});
 
 // ── GLOBALS ─────────────────────────────────────────────
 let goldEntry = null;
 let gbpEntry  = null;
 
 const fmtD = n => n == null ? '—' : (+n).toLocaleString('tr-TR', {minimumFractionDigits: 2, maximumFractionDigits: 4});
-const today = new Date().toISOString().slice(0, 10);
+const _now = new Date();
+const today = `${_now.getFullYear()}-${String(_now.getMonth()+1).padStart(2,'0')}-${String(_now.getDate()).padStart(2,'0')}`;
 
 document.getElementById('dateLabel').textContent = today;
 
