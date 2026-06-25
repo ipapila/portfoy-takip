@@ -537,7 +537,7 @@ const fmt  = n => n == null ? '—' : Math.round(n).toLocaleString('tr-TR');
 const fmtD = n => n == null ? '—' : n.toLocaleString('tr-TR', {minimumFractionDigits:2, maximumFractionDigits:4});
 const dd   = s => { const [y,m,d] = s.split('-'); return `${d}.${m}.${y}`; };
 const sign = n => n >= 0 ? '+' : '';
-const today = new Date().toISOString().slice(0, 10);
+const _n = new Date(); const today = `${_n.getFullYear()}-${String(_n.getMonth()+1).padStart(2,'0')}-${String(_n.getDate()).padStart(2,'0')}`;
 
 // ── CHART HELPERS ─────────────────────────────────────────
 let goldChart, gbpChart, gbpSpreadChart;
@@ -704,7 +704,7 @@ boot();
 // ══════════════════════════════════════════
 function openModal() {
   // Token varsa geri doldur
-  const t = sessionStorage.getItem('gh_token');
+  const t = localStorage.getItem('gh_token');
   if (t) document.getElementById('mToken').value = t;
 
   // Bugünün mevcut değerlerini placeholder olarak göster
@@ -743,8 +743,8 @@ function overlayClick(e) {
   if (e.target === document.getElementById('modalOverlay')) closeModal();
 }
 
-function saveToken(v) { if (v) sessionStorage.setItem('gh_token', v); }
-function clearToken()  { sessionStorage.removeItem('gh_token'); document.getElementById('mToken').value = ''; }
+function saveToken(v) { if (v) localStorage.setItem('gh_token', v); }
+function clearToken()  { localStorage.removeItem('gh_token'); document.getElementById('mToken').value = ''; }
 
 // diff hint
 const _origVals = {
