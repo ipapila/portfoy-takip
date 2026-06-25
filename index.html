@@ -365,19 +365,29 @@
       <div class="sub">TL (700 × başl. satış)</div>
     </div>
     <div class="metric">
-      <div class="lbl">Güncel Alış</div>
+      <div class="lbl">İşBankası Alış</div>
       <div class="val" id="bAlis">—</div>
       <div class="sub">TL/GBP</div>
     </div>
     <div class="metric">
-      <div class="lbl">Güncel Satış</div>
+      <div class="lbl">İşBankası Satış</div>
       <div class="val" id="bSatis">—</div>
       <div class="sub">TL/GBP</div>
     </div>
     <div class="metric">
+      <div class="lbl">TCMB Satış</div>
+      <div class="val" id="bTcmb">—</div>
+      <div class="sub">TL/GBP (referans)</div>
+    </div>
+    <div class="metric">
+      <div class="lbl">Banka Farkı</div>
+      <div class="val" id="bFark">—</div>
+      <div class="sub" id="bFarkPct">İşBankası − TCMB</div>
+    </div>
+    <div class="metric">
       <div class="lbl">Portföy Değeri</div>
       <div class="val" id="bDeger">—</div>
-      <div class="sub">700 GBP × satış</div>
+      <div class="sub">700 GBP × İşBank satış</div>
     </div>
     <div class="metric">
       <div class="lbl">Kâr / Zarar</div>
@@ -386,24 +396,38 @@
     </div>
   </div>
 
+  <!-- Portföy grafiği -->
   <div class="chart-card">
     <div class="chart-top">
       <span class="chart-ttl">Portföy değeri (TL) ve GBP/TRY kuru</span>
       <div class="legend">
         <span class="leg-item"><span class="leg-dot" style="background:var(--gbp)"></span>Portföy TL</span>
-        <span class="leg-item"><span class="leg-dot" style="background:rgba(91,142,255,.5)"></span>Satış TL/GBP</span>
-        <span class="leg-item"><span class="leg-dot" style="background:rgba(91,142,255,.25)"></span>Alış TL/GBP</span>
+        <span class="leg-item"><span class="leg-dot" style="background:rgba(91,142,255,.5)"></span>İşBankası satış</span>
+        <span class="leg-item"><span class="leg-dot" style="background:rgba(150,150,150,.4)"></span>TCMB satış</span>
       </div>
     </div>
     <div class="chart-wrap"><canvas id="gbpChart"></canvas></div>
   </div>
 
+  <!-- TCMB fark grafiği -->
+  <div class="chart-card" style="margin-bottom:16px">
+    <div class="chart-top">
+      <span class="chart-ttl">İşBankası − TCMB satış farkı (TL/GBP) — banka marjı</span>
+      <div class="legend">
+        <span class="leg-item"><span class="leg-dot" style="background:#f5a623;"></span>Fark (TL)</span>
+        <span class="leg-item"><span class="leg-dot" style="background:rgba(245,166,35,.2);"></span>Alan altı</span>
+      </div>
+    </div>
+    <div class="chart-wrap"><canvas id="gbpSpreadChart"></canvas></div>
+  </div>
+
   <div class="tbl-card">
-    <div class="tbl-head gbp-cols">
+    <div class="tbl-head" style="grid-template-columns:1.1fr 1fr 1fr 1fr .9fr 1.1fr">
       <span>Tarih</span>
-      <span class="ta-r col-alis-h">Alış</span>
-      <span class="ta-r col-satis-h">Satış</span>
-      <span class="ta-r">Portföy (TL)</span>
+      <span class="ta-r">İşBank Alış</span>
+      <span class="ta-r">İşBank Satış</span>
+      <span class="ta-r">TCMB Satış</span>
+      <span class="ta-r">Fark</span>
       <span class="ta-r">Kâr / Zarar</span>
     </div>
     <div id="gbpTable"></div>
@@ -584,8 +608,9 @@ function renderGold(data) {
 }
 
 // ── RENDER GBP ────────────────────────────────────────────
+let gbpSpreadChart = null;
+
 function renderGbp(data) {
-  // Start cost = first record's satis
   const startEntry = data.find(r => r.date === GBP_START_DATE) || data[0];
   const GBP_COST = GBP_AMOUNT * startEntry.satis;
 
@@ -596,8 +621,22 @@ function renderGbp(data) {
   const pnl = portDeger - GBP_COST;
   const pct = (pnl / GBP_COST * 100).toFixed(2);
 
-  document.getElementById('bAlis').textContent   = fmtD(last.alis);
-  document.getElementById('bSatis').textContent  = fmtD(last.satis);
+  document.getElementById('bAlis').textContent  = fmtD(last.isbank_alis || last.alis);
+  document.getElementById('bSatis').textContent = fmtD(last.isbank_satis || last.satis);
+
+  // TCMB karşılaştırma
+  if (last.tcmb_satis) {
+    document.getElementById('bTcmb').textContent = fmtD(last.tcmb_satis);
+    const fark = last.fark_satis || (last.isbank_satis - last.tcmb_satis);
+    const farkPct = (fark / last.tcmb_satis * 100).toFixed(2);
+    document.getElementById('bFark').textContent = sign(fark) + fmtD(fark) + ' TL';
+    document.getElementById('bFark').className = 'val ' + (fark > 0 ? 'neg' : 'pos'); // fark > 0 kötü (banka pahalı)
+    document.getElementById('bFarkPct').textContent = `İşBank TCMB'den %${farkPct} pahalı`;
+  } else {
+    document.getElementById('bTcmb').textContent = '—';
+    document.getElementById('bFark').textContent = '—';
+  }
+
   document.getElementById('bDeger').textContent  = fmt(portDeger);
   document.getElementById('bPnl').textContent    = sign(pnl) + fmt(pnl) + ' TL';
   document.getElementById('bPnl').className      = 'val ' + (pnl >= 0 ? 'pos' : 'neg');
@@ -610,31 +649,112 @@ function renderGbp(data) {
   badge.style.background = pnl >= 0 ? 'rgba(52,199,138,.12)' : 'rgba(240,96,96,.12)';
   badge.style.color = pnl >= 0 ? 'var(--green)' : 'var(--red)';
 
-  // Chart
+  // Portföy + fiyat grafiği (TCMB satış da eklendi)
+  const labels = data.map(r => dd(r.date));
   if (gbpChart) gbpChart.destroy();
-  gbpChart = buildChart(
-    'gbpChart',
-    data.map(r => dd(r.date)),
-    data.map(r => Math.round(r.satis * GBP_AMOUNT)),
-    data.map(r => r.satis),
-    data.map(r => r.alis),
-    'rgb(91,142,255)'
-  );
+  const ctx1 = document.getElementById('gbpChart').getContext('2d');
+  gbpChart = new Chart(ctx1, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Portföy (TL)',
+          data: data.map(r => Math.round((r.isbank_satis || r.satis) * GBP_AMOUNT)),
+          borderColor: 'rgb(91,142,255)',
+          backgroundColor: 'rgba(91,142,255,.08)',
+          fill: true, tension: 0.35, pointRadius: 2.5, borderWidth: 2, yAxisID: 'y1'
+        },
+        {
+          label: 'İşBankası Satış',
+          data: data.map(r => r.isbank_satis || r.satis),
+          borderColor: 'rgba(91,142,255,.7)',
+          borderDash: [5,3], fill: false, tension: 0.35, pointRadius: 0, borderWidth: 1.5, yAxisID: 'y2'
+        },
+        {
+          label: 'TCMB Satış',
+          data: data.map(r => r.tcmb_satis || null),
+          borderColor: 'rgba(150,150,150,.5)',
+          borderDash: [3,3], fill: false, tension: 0.35, pointRadius: 0, borderWidth: 1, yAxisID: 'y2'
+        }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#1a2030', borderColor: '#2a3348', borderWidth: 1,
+          titleColor: '#9aa5b8', bodyColor: '#e8eaf0', padding: 10,
+          callbacks: {
+            label: c => {
+              const v = c.parsed.y;
+              if (c.datasetIndex === 0) return ` Portföy: ${Math.round(v).toLocaleString('tr-TR')} TL`;
+              if (c.datasetIndex === 1) return ` İşBank: ${v.toLocaleString('tr-TR',{minimumFractionDigits:2})} TL`;
+              return ` TCMB: ${(v||0).toLocaleString('tr-TR',{minimumFractionDigits:2})} TL`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: { ticks: { maxRotation:45, autoSkip:true, maxTicksLimit:12, font:{size:10}, color:'#636b7a' }, grid:{color:'rgba(255,255,255,.04)'} },
+        y1: { position:'left', ticks:{callback:v=>Math.round(v/1000)+'K',font:{size:10},color:'rgb(91,142,255)'}, grid:{color:'rgba(255,255,255,.04)'} },
+        y2: { position:'right', ticks:{callback:v=>v.toLocaleString('tr-TR',{minimumFractionDigits:1}),font:{size:10},color:'#636b7a'}, grid:{drawOnChartArea:false} }
+      }
+    }
+  });
 
-  // Table
+  // Fark (spread) grafiği
+  if (gbpSpreadChart) gbpSpreadChart.destroy();
+  const ctx2 = document.getElementById('gbpSpreadChart').getContext('2d');
+  const spreadData = data.map(r => r.fark_satis != null ? r.fark_satis : (r.isbank_satis && r.tcmb_satis ? +(r.isbank_satis - r.tcmb_satis).toFixed(4) : null));
+  gbpSpreadChart = new Chart(ctx2, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Fark (TL)',
+        data: spreadData,
+        borderColor: '#f5a623',
+        backgroundColor: 'rgba(245,166,35,.15)',
+        fill: true, tension: 0.35, pointRadius: 2.5, borderWidth: 2
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#1a2030', borderColor: '#2a3348', borderWidth: 1,
+          titleColor: '#9aa5b8', bodyColor: '#e8eaf0', padding: 10,
+          callbacks: { label: c => ` İşBank−TCMB farkı: +${c.parsed.y.toFixed(2)} TL` }
+        }
+      },
+      scales: {
+        x: { ticks:{maxRotation:45,autoSkip:true,maxTicksLimit:12,font:{size:10},color:'#636b7a'}, grid:{color:'rgba(255,255,255,.04)'} },
+        y: { ticks:{callback:v=>'+'+v.toFixed(2)+' ₺',font:{size:10},color:'#f5a623'}, grid:{color:'rgba(255,255,255,.04)'} }
+      }
+    }
+  });
+
+  // Tablo
   const tbody = document.getElementById('gbpTable');
   const rows = [...data].reverse().slice(0, 30);
   tbody.innerHTML = rows.map(r => {
-    const pv  = r.satis * GBP_AMOUNT;
+    const pv  = (r.isbank_satis || r.satis) * GBP_AMOUNT;
     const p   = pv - GBP_COST;
     const pct = (p / GBP_COST * 100).toFixed(2);
     const cls = p >= 0 ? 'pnl-badge pnl-pos' : 'pnl-badge pnl-neg';
-    return `<div class="tbl-row gbp-cols">
+    const fark = r.fark_satis != null ? r.fark_satis : (r.isbank_satis && r.tcmb_satis ? +(r.isbank_satis - r.tcmb_satis).toFixed(2) : null);
+    return `<div class="tbl-row" style="grid-template-columns:1.1fr 1fr 1fr 1fr .9fr 1.1fr">
       <span>${dd(r.date)}</span>
-      <span class="ta-r col-alis">${fmtD(r.alis)}</span>
-      <span class="ta-r col-satis">${fmtD(r.satis)}</span>
-      <span class="ta-r">${fmt(pv)}</span>
-      <span class="ta-r"><span class="${cls}">${sign(p)}${fmt(p)} TL</span> <small style="color:var(--muted)">${sign(p)}${pct}%</small></span>
+      <span class="ta-r">${fmtD(r.isbank_alis || r.alis)}</span>
+      <span class="ta-r">${fmtD(r.isbank_satis || r.satis)}</span>
+      <span class="ta-r" style="color:var(--muted)">${r.tcmb_satis ? fmtD(r.tcmb_satis) : '—'}</span>
+      <span class="ta-r" style="color:#f5a623">${fark != null ? '+'+fark.toFixed(2) : '—'}</span>
+      <span class="ta-r"><span class="${cls}">${sign(p)}${fmt(p)} TL</span></span>
     </div>`;
   }).join('');
 }
