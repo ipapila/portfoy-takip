@@ -92,6 +92,16 @@
   .chart-wrap { position: relative; height: 200px; }
 
   .tbl-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .tbl-toggle {
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 10px; font-size: 12px; color: var(--muted); cursor: pointer;
+    border-top: 1px solid var(--border); background: none; width: 100%;
+    font-family: var(--font); transition: color .15s, background .15s;
+    border-radius: 0 0 var(--radius) var(--radius);
+  }
+  .tbl-toggle:hover { color: var(--text); background: rgba(255,255,255,.02); }
+  .tbl-rows-extra { display: none; }
+  .tbl-rows-extra.open { display: block; }
   .tbl-head { display: grid; padding: 10px 16px; border-bottom: 1px solid var(--border); font-size: 11px; color: var(--muted); font-weight: 500; letter-spacing: .4px; text-transform: uppercase; }
   .tbl-row { display: grid; padding: 9px 16px; border-bottom: 1px solid var(--border); font-size: 13px; align-items: center; transition: background .1s; }
   .tbl-row:last-child { border-bottom: none; }
@@ -332,7 +342,11 @@
       <span class="ta-r">Portföy (TL)</span>
       <span class="ta-r">Kâr / Zarar</span>
     </div>
-    <div id="goldTable"></div>
+    <div id="goldTableTop"></div>
+    <div id="goldTableExtra" class="tbl-rows-extra"></div>
+    <button class="tbl-toggle" id="goldToggle" onclick="toggleTable('gold')" style="display:none">
+      <span id="goldToggleLbl">▼ Tümünü göster</span>
+    </button>
   </div>
 
   <hr class="divider">
@@ -414,7 +428,11 @@
       <span class="ta-r">Fark</span>
       <span class="ta-r">Kâr / Zarar</span>
     </div>
-    <div id="gbpTable"></div>
+    <div id="gbpTableTop"></div>
+    <div id="gbpTableExtra" class="tbl-rows-extra"></div>
+    <button class="tbl-toggle" id="gbpToggle" onclick="toggleTable('gbp')" style="display:none">
+      <span id="gbpToggleLbl">▼ Tümünü göster</span>
+    </button>
   </div>
 
   <footer class="footer">
@@ -594,16 +612,13 @@ function renderGold(data) {
   if (goldChart) goldChart.destroy();
   goldChart = buildChart('goldChart', data.map(r=>dd(r.date)), data.map(r=>Math.round(r.satis*GOLD_XAU)), data.map(r=>r.satis), data.map(r=>r.alis), 'rgb(212,168,71)');
   const rows = [...data].reverse().slice(0,30);
-  document.getElementById('goldTable').innerHTML = rows.map(r => {
-    const pv=r.satis*GOLD_XAU, p=pv-GOLD_COST, pct=(p/GOLD_COST*100).toFixed(2);
-    return `<div class="tbl-row gold-cols">
-      <span>${dd(r.date)}</span>
-      <span class="ta-r col-alis">${fmtD(r.alis)}</span>
-      <span class="ta-r col-satis">${fmtD(r.satis)}</span>
-      <span class="ta-r">${fmt(pv)}</span>
-      <span class="ta-r"><span class="${p>=0?'pnl-badge pnl-pos':'pnl-badge pnl-neg'}">${sign(p)}${fmt(p)} TL</span> <small style="color:var(--muted)">${sign(p)}${pct}%</small></span>
-    </div>`;
-  }).join('');
+  const makeGoldRow = r => { const pv=r.satis*GOLD_XAU, p=pv-GOLD_COST, pct=(p/GOLD_COST*100).toFixed(2); return `<div class="tbl-row gold-cols"><span>${dd(r.date)}</span><span class="ta-r col-alis">${fmtD(r.alis)}</span><span class="ta-r col-satis">${fmtD(r.satis)}</span><span class="ta-r">${fmt(pv)}</span><span class="ta-r"><span class="${p>=0?'pnl-badge pnl-pos':'pnl-badge pnl-neg'}">${sign(p)}${fmt(p)} TL</span> <small style="color:var(--muted)">${sign(p)}${pct}%</small></span></div>`; };
+  document.getElementById('goldTableTop').innerHTML   = rows.slice(0,3).map(makeGoldRow).join('');
+  document.getElementById('goldTableExtra').innerHTML = rows.slice(3).map(makeGoldRow).join('');
+  const gt = document.getElementById('goldToggle');
+  gt.style.display = rows.length > 3 ? 'flex' : 'none';
+  document.getElementById('goldTableExtra').classList.remove('open');
+  document.getElementById('goldToggleLbl').textContent = `▼ Tümünü göster (${rows.length - 3} kayıt daha)`;
 }
 
 function renderGbp(data) {
@@ -665,18 +680,13 @@ function renderGbp(data) {
     }
   });
   const rows = [...data].reverse().slice(0,30);
-  document.getElementById('gbpTable').innerHTML = rows.map(r=>{
-    const pv=(r.isbank_satis||r.satis)*GBP_AMOUNT, p=pv-GBP_COST, pct=(p/GBP_COST*100).toFixed(2);
-    const fark=r.fark_satis!=null?r.fark_satis:(r.isbank_satis&&r.tcmb_satis?+(r.isbank_satis-r.tcmb_satis).toFixed(2):null);
-    return `<div class="tbl-row" style="grid-template-columns:1.1fr 1fr 1fr 1fr .9fr 1.1fr">
-      <span>${dd(r.date)}</span>
-      <span class="ta-r">${fmtD(r.isbank_alis||r.alis)}</span>
-      <span class="ta-r">${fmtD(r.isbank_satis||r.satis)}</span>
-      <span class="ta-r" style="color:var(--muted)">${r.tcmb_satis?fmtD(r.tcmb_satis):'—'}</span>
-      <span class="ta-r" style="color:#f5a623">${fark!=null?'+'+fark.toFixed(2):'—'}</span>
-      <span class="ta-r"><span class="${p>=0?'pnl-badge pnl-pos':'pnl-badge pnl-neg'}">${sign(p)}${fmt(p)} TL</span></span>
-    </div>`;
-  }).join('');
+  const makeGbpRow = r => { const pv=(r.isbank_satis||r.satis)*GBP_AMOUNT, p=pv-GBP_COST, pct=(p/GBP_COST*100).toFixed(2); const fark=r.fark_satis!=null?r.fark_satis:(r.isbank_satis&&r.tcmb_satis?+(r.isbank_satis-r.tcmb_satis).toFixed(2):null); return `<div class="tbl-row" style="grid-template-columns:1.1fr 1fr 1fr 1fr .9fr 1.1fr"><span>${dd(r.date)}</span><span class="ta-r">${fmtD(r.isbank_alis||r.alis)}</span><span class="ta-r">${fmtD(r.isbank_satis||r.satis)}</span><span class="ta-r" style="color:var(--muted)">${r.tcmb_satis?fmtD(r.tcmb_satis):'—'}</span><span class="ta-r" style="color:#f5a623">${fark!=null?'+'+fark.toFixed(2):'—'}</span><span class="ta-r"><span class="${p>=0?'pnl-badge pnl-pos':'pnl-badge pnl-neg'}">${sign(p)}${fmt(p)} TL</span></span></div>`; };
+  document.getElementById('gbpTableTop').innerHTML   = rows.slice(0,3).map(makeGbpRow).join('');
+  document.getElementById('gbpTableExtra').innerHTML = rows.slice(3).map(makeGbpRow).join('');
+  const bt = document.getElementById('gbpToggle');
+  bt.style.display = rows.length > 3 ? 'flex' : 'none';
+  document.getElementById('gbpTableExtra').classList.remove('open');
+  document.getElementById('gbpToggleLbl').textContent = `▼ Tümünü göster (${rows.length - 3} kayıt daha)`;
 }
 
 // ── BOOT ─────────────────────────────────────────────────
@@ -867,6 +877,14 @@ function showModalOk(msg)  { const el=document.getElementById('mOk');  document.
 function hideModalAlerts() {
   document.getElementById('mErr').classList.remove('show');
   document.getElementById('mOk').classList.remove('show');
+}
+
+function toggleTable(key) {
+  const extra  = document.getElementById(key+'TableExtra');
+  const lbl    = document.getElementById(key+'ToggleLbl');
+  const isOpen = extra.classList.toggle('open');
+  const count  = extra.querySelectorAll('.tbl-row').length;
+  lbl.textContent = isOpen ? `▲ Kapat` : `▼ Tümünü göster (${count} kayıt daha)`;
 }
 
 // ESC ile kapat
