@@ -111,5 +111,3 @@ jobs:
         if: steps.check.outputs.changed == 'false'
         run: echo "ℹ️ Veri değişmedi, commit atılmadı."
 
-
-
