@@ -287,7 +287,7 @@
       <div class="title">✏️ Fiyat Revizyonu</div>
       <a href="index.html" class="back-link">← Portföye dön</a>
     </div>
-    <div class="subtitle">Bugünün otomatik çekilen fiyatlarını düzeltin ve PR branch'e kaydedin.</div>
+    <div class="subtitle">Fiyatları düzeltin ve doğrudan <strong>main</strong> branch'e kaydedin.</div>
   </div>
 
   <div id="alertErr" class="alert alert-err">
@@ -309,8 +309,8 @@
       </div>
       <div class="field">
         <label>Branch</label>
-        <input type="text" id="ghBranch" placeholder="price-update/2026-06-25" id="ghBranch">
-        <div class="field-hint">PR açıldığında branch adı otomatik dolar — aşağıdan URL parametresiyle de gelebilir.</div>
+        <input type="text" id="ghBranch" placeholder="main" value="main">
+        <div class="field-hint">Normalde <code>main</code> bırakın. Test için farklı branch girebilirsiniz.</div>
       </div>
     </div>
     <div class="field">
@@ -399,7 +399,7 @@
   <!-- ACTIONS -->
   <div class="actions">
     <button class="btn btn-primary" id="btnSave" onclick="save()">
-      💾 PR Branch'e Kaydet
+      💾 main Branch'e Kaydet
     </button>
     <button class="btn btn-secondary" onclick="loadCurrentValues()">
       🔄 Mevcut değerleri yenile
@@ -705,7 +705,10 @@ function clearInputs() {
 }
 
 // ── BOOT ────────────────────────────────────────────────
-loadCurrentValues();
+// Token varsa otomatik yükle, yoksa kullanıcı Yenile'ye bassın
+if (document.getElementById('ghToken').value.trim()) {
+  loadCurrentValues();
+}
 </script>
 </body>
 </html>
