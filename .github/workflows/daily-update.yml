@@ -1,4 +1,4 @@
-name: 1 — Günlük Fiyat Çek (PR Aç)
+name: Günlük Fiyat Güncelleme
 
 on:
   schedule:
@@ -8,15 +8,16 @@ on:
 
 permissions:
   contents: write
-  pull-requests: write
 
 jobs:
-  fetch-and-pr:
+  fetch-and-commit:
     runs-on: ubuntu-latest
 
     steps:
       - name: Repoyu çek
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Python kur
         uses: actions/setup-python@v5
@@ -36,12 +37,10 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: python scripts/fetch_prices.py
 
-      - name: Manuel veriyi koru (main'deki bugün kaydı varsa)
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      - name: Manuel revizyonu koru (main'deki manuel kayıt varsa öncelikli)
         run: |
           python3 << 'PYEOF'
-          import json, subprocess, sys
+          import json, subprocess
           from datetime import date
           TODAY = date.today().isoformat()
 
@@ -50,7 +49,6 @@ jobs:
           def save(path, data):
               with open(path, 'w') as f: json.dump(data, f, ensure_ascii=False, indent=2)
 
-          # main branch'ten mevcut veriyi çek
           def get_main(path):
               r = subprocess.run(['git', 'show', f'origin/main:{path}'], capture_output=True, text=True)
               if r.returncode != 0: return []
@@ -59,13 +57,12 @@ jobs:
           for fname in ['data/gold.json', 'data/gbp.json']:
               local = load(fname)
               main  = get_main(fname)
-              main_today = next((r for r in main  if r['date'] == TODAY), None)
+              main_today  = next((r for r in main  if r['date'] == TODAY), None)
               local_today = next((r for r in local if r['date'] == TODAY), None)
 
               if main_today and main_today.get('kaynak','').endswith('(manuel)'):
-                  print(f"  ℹ {fname}: main'de manuel kayıt var, korunuyor.")
+                  print(f"  ℹ {fname}: manuel kayıt var, korunuyor.")
                   if local_today:
-                      # workflow verisini manuel veriyle birleştir: manuel alanlar öncelikli
                       merged = {**local_today, **{k:v for k,v in main_today.items() if v is not None}}
                       merged['kaynak'] = main_today['kaynak']
                       for i,r in enumerate(local):
@@ -76,102 +73,43 @@ jobs:
                       local.sort(key=lambda x: x['date'])
                   save(fname, local)
               else:
-                  print(f"  ✓ {fname}: manuel kayıt yok, workflow verisi kullanılıyor.")
+                  print(f"  ✓ {fname}: otomatik veri kullanılıyor.")
           PYEOF
 
       - name: Değişiklik var mı?
         id: check
         run: |
-          git diff --quiet data/gold.json data/gbp.json && echo "changed=false" >> $GITHUB_OUTPUT || echo "changed=true" >> $GITHUB_OUTPUT
+          git diff --quiet data/gold.json data/gbp.json \
+            && echo "changed=false" >> $GITHUB_OUTPUT \
+            || echo "changed=true"  >> $GITHUB_OUTPUT
 
-      - name: Güncelleme branch'i oluştur ve push et
+      - name: main branch'e direkt commit at
         if: steps.check.outputs.changed == 'true'
         run: |
           DATE=$(date +'%Y-%m-%d')
-          BRANCH="price-update/$DATE"
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          # Uzakta aynı isimde branch varsa sil (önceki yarım çalışma kalıntısı)
-          git push origin --delete "$BRANCH" 2>/dev/null || true
-          git checkout -b "$BRANCH"
           git add data/gold.json data/gbp.json
-          git commit -m "chore: $DATE fiyat güncellemesi (revizyon için)"
-          git push origin "$BRANCH"
-          echo "BRANCH=$BRANCH" >> $GITHUB_ENV
-          echo "DATE=$DATE"     >> $GITHUB_ENV
+          git commit -m "chore: $DATE otomatik fiyat güncellemesi"
+          git push origin main
+          echo "✅ main'e commit atıldı: $DATE"
 
-      - name: Fiyat özetini hazırla
+      - name: Güncelleme özeti
         if: steps.check.outputs.changed == 'true'
-        id: summary
         run: |
           python3 << 'PYEOF'
-          import json, os
-
-          with open("data/gold.json") as f:
-              gold = json.load(f)
-          with open("data/gbp.json") as f:
-              gbp = json.load(f)
-
+          import json
+          with open("data/gold.json") as f: gold = json.load(f)
+          with open("data/gbp.json") as f: gbp  = json.load(f)
           gl = gold[-1]
           bl = gbp[-1]
-
-          def fmt(val, fallback=None):
-              v = val if val is not None else fallback
-              if v is None:
-                  return "—"
-              try:
-                  return f"{float(v):,.2f}"
-              except (TypeError, ValueError):
-                  return str(v)
-
-          def fmts(val):
-              return str(val) if val is not None else "—"
-
-          branch = os.environ.get("BRANCH", "")
-          repo   = os.environ.get("GITHUB_REPOSITORY", "")
-
-          # revizyon.html linki — branch URL parametresiyle
-          revizyon_url = (
-              f"https://{repo.split('/')[0]}.github.io/{repo.split('/')[1]}/revizyon.html"
-              f"?branch={branch}&repo={repo}"
-          )
-
-          body = f"""## 📊 Günlük Fiyat Güncellemesi — {gl['date']}
-
-          ### 🥇 İş Bankası Gram Altın
-          | | Değer |
-          |---|---|
-          | Alış | **{fmt(gl.get('alis'))} TL** |
-          | Satış | **{fmt(gl.get('satis'))} TL** |
-          | Kaynak | {fmts(gl.get('kaynak'))} |
-
-          ### 💷 GBP/TRY
-          | | İşBankası | TCMB |
-          |---|---|---|
-          | Alış | **{fmt(bl.get('isbank_alis'), bl.get('alis'))} TL** | {fmt(bl.get('tcmb_alis'))} TL |
-          | Satış | **{fmt(bl.get('isbank_satis'), bl.get('satis'))} TL** | {fmt(bl.get('tcmb_satis'))} TL |
-          | Fark (satış) | **+{fmt(bl.get('fark_satis'), 0)} TL** | — |
-
-          ---
-          ✅ Fiyatlar doğruysa **Merge** et.
-          ✏️ Fiyatları düzeltmek için → **[Revizyon Sayfasını Aç]({revizyon_url})**
-          &nbsp;&nbsp;&nbsp;_(GitHub token ile düzeltip kaydedebilirsin, sonra bu PR'ı merge et)_
-          """
-
-          with open(os.environ["GITHUB_ENV"], "a") as f:
-              f.write("PR_BODY<<DELIM\n")
-              f.write(body + "\n")
-              f.write("DELIM\n")
+          print(f"📊 {gl['date']} — Altın: alış={gl.get('alis')} satış={gl.get('satis')}")
+          print(f"📊 {bl['date']} — GBP İşBank satış={bl.get('isbank_satis')} TCMB satış={bl.get('tcmb_satis')}")
           PYEOF
 
-      - name: PR aç
-        if: steps.check.outputs.changed == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh pr create \
-            --title "💰 $(date +'%Y-%m-%d') Fiyat Güncellemesi — Revizyon Gerekebilir" \
-            --body "$PR_BODY" \
-            --base main \
-            --head "$BRANCH" \
-            --label "price-update" || true
+      - name: Değişiklik yoksa bildir
+        if: steps.check.outputs.changed == 'false'
+        run: echo "ℹ️ Veri değişmedi, commit atılmadı."
+
+
+
