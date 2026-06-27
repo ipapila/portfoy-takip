@@ -120,6 +120,44 @@
   .footer a { color: var(--muted); text-decoration: none; }
   .footer a:hover { color: var(--text); }
 
+  /* ── UYARI BANNER ── */
+  .stale-banner {
+    display: none;
+    align-items: flex-start;
+    gap: 12px;
+    background: rgba(240,96,96,.08);
+    border: 1px solid rgba(240,96,96,.25);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    margin-bottom: 20px;
+  }
+  .stale-banner.show { display: flex; }
+  .stale-banner-icon { font-size: 18px; flex-shrink: 0; }
+  .stale-banner-body { flex: 1; }
+  .stale-banner-title { font-size: 13px; font-weight: 600; color: var(--red); margin-bottom: 4px; }
+  .stale-banner-sub   { font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+  .stale-token-row    { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .stale-token-row input {
+    flex: 1; min-width: 180px;
+    background: #0d0f12; border: 1px solid var(--border2);
+    border-radius: 7px; color: var(--text);
+    font-family: var(--font); font-size: 12px;
+    padding: 7px 10px; outline: none;
+    transition: border-color .15s;
+  }
+  .stale-token-row input:focus { border-color: var(--red); }
+  .stale-token-row input::placeholder { color: #3a4050; }
+  .btn-backfill {
+    padding: 7px 14px; border-radius: 7px; border: none;
+    background: var(--red); color: #fff;
+    font-family: var(--font); font-size: 12px; font-weight: 500;
+    cursor: pointer; white-space: nowrap; flex-shrink: 0;
+    transition: opacity .15s; display: flex; align-items: center; gap: 6px;
+  }
+  .btn-backfill:hover:not(:disabled) { opacity: .85; }
+  .btn-backfill:disabled { opacity: .4; cursor: not-allowed; }
+  .stale-result { font-size: 11px; margin-top: 6px; min-height: 14px; color: var(--muted); }
+
   /* ══════════════════════════════════════════
      MODAL
   ══════════════════════════════════════════ */
@@ -283,6 +321,23 @@
   <div class="status-bar">
     <span class="pulse"></span>
     <span id="statusMsg">Veriler yükleniyor...</span>
+  </div>
+
+  <!-- ── VERİ GECİKMESİ UYARI BANNER ── -->
+  <div class="stale-banner" id="staleBanner">
+    <span class="stale-banner-icon">⚠️</span>
+    <div class="stale-banner-body">
+      <div class="stale-banner-title" id="staleBannerTitle">Veri Güncellemesi Gecikmeli</div>
+      <div class="stale-banner-sub" id="staleBannerSub">GitHub Actions çalışmamış olabilir. Token ile eksik günleri manuel olarak ekleyebilirsiniz.</div>
+      <div class="stale-token-row">
+        <input type="password" id="staleToken" placeholder="ghp_xxxx — GitHub token (Contents write)" oninput="syncStaleToken(this.value)">
+        <button class="btn-backfill" id="staleBtn" onclick="backfillMissing()">
+          <span id="staleBtnIcon">🔄</span>
+          <span id="staleBtnLbl">Eksik Günleri Ekle (son değerle)</span>
+        </button>
+      </div>
+      <div class="stale-result" id="staleResult"></div>
+    </div>
   </div>
 
   <!-- ══ ALTIN ══ -->
@@ -468,8 +523,12 @@
     </div>
 
     <!-- Tarih -->
-    <div style="font-size:12px;color:var(--muted);margin-bottom:16px">
-      Güncellenen tarih: <strong id="mDate" style="color:var(--text)">—</strong>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+      <span style="font-size:12px;color:var(--muted)">Düzeltilecek tarih:</span>
+      <input type="date" id="mDateInput"
+        style="background:#0d0f12;border:1px solid var(--border2);border-radius:7px;color:var(--text);font-family:var(--font);font-size:13px;padding:5px 10px;outline:none;cursor:pointer"
+        oninput="onModalDateChange(this.value)">
+      <span style="font-size:11px;color:var(--muted)" id="mDateHint"></span>
     </div>
 
     <div class="modal-divider"></div>
@@ -703,36 +762,170 @@ async function boot() {
     const lastDate = lastGold>lastGbp?lastGold:lastGbp;
     document.getElementById('lastUpdate').textContent = dd(lastDate);
     document.getElementById('statusMsg').textContent  = `Veriler güncellendi — son kayıt: ${dd(lastDate)}`;
+
+    // ── STALE DETECTION ──
+    checkStale(lastDate);
   } catch(e) {
     document.getElementById('statusMsg').textContent = 'Veri yüklenemedi: '+e.message;
   }
 }
 boot();
 
+// ── STALE DATA DETECTION ─────────────────────────────────
+function checkStale(lastDate) {
+  const now = new Date();
+  const todayStr = now.toISOString().slice(0,10);
+  const lastMs = new Date(lastDate).getTime();
+  const todayMs = new Date(todayStr).getTime();
+  const diffDays = Math.round((todayMs - lastMs) / 86400000);
+
+  if (diffDays <= 1) return; // 1 güne kadar normal (hafta sonu + dün)
+
+  // Kaç iş günü eksik?
+  const missing = getMissingWorkdays(lastDate, todayStr);
+  if (missing.length === 0) return;
+
+  const banner = document.getElementById('staleBanner');
+  banner.classList.add('show');
+  document.getElementById('staleBannerTitle').textContent =
+    `Veri ${diffDays} Gündür Güncellenmiyor (son kayıt: ${dd(lastDate)})`;
+  document.getElementById('staleBannerSub').textContent =
+    `GitHub Actions çalışmamış olabilir. Eksik iş günleri: ${missing.map(dd).join(', ')}. ` +
+    `Aşağıdaki token ile son bilinen fiyatı bu günlere kopyalayabilirsiniz.`;
+
+  // Token daha önce girilmişse doldur
+  const saved = sessionStorage.getItem('gh_token');
+  if (saved) document.getElementById('staleToken').value = saved;
+}
+
+function getMissingWorkdays(fromDate, toDate) {
+  const missing = [];
+  const d = new Date(fromDate);
+  d.setDate(d.getDate() + 1);
+  const end = new Date(toDate);
+  while (d < end) {
+    const day = d.getDay();
+    if (day !== 0 && day !== 6) { // Pazar=0, Cumartesi=6
+      missing.push(d.toISOString().slice(0,10));
+    }
+    d.setDate(d.getDate() + 1);
+  }
+  return missing;
+}
+
+function syncStaleToken(v) {
+  if (v) sessionStorage.setItem('gh_token', v);
+  // Modal token'ı da senkronize et
+  const mTok = document.getElementById('mToken');
+  if (mTok) mTok.value = v;
+}
+
+async function backfillMissing() {
+  const token = document.getElementById('staleToken').value.trim();
+  if (!token) {
+    document.getElementById('staleResult').textContent = '⚠ Token girilmedi.';
+    document.getElementById('staleResult').style.color = 'var(--red)';
+    return;
+  }
+  sessionStorage.setItem('gh_token', token);
+
+  const btn = document.getElementById('staleBtn');
+  const lbl = document.getElementById('staleBtnLbl');
+  const icon = document.getElementById('staleBtnIcon');
+  const res = document.getElementById('staleResult');
+  btn.disabled = true;
+  lbl.textContent = 'Ekleniyor...';
+  icon.textContent = '⏳';
+  res.textContent = '';
+  res.style.color = 'var(--muted)';
+
+  try {
+    const todayStr = new Date().toISOString().slice(0,10);
+    let addedCount = 0;
+
+    // ALTIN backfill
+    {
+      const file = await ghGet('contents/data/gold.json?ref=main', token);
+      const data = JSON.parse(atob(file.content.replace(/\n/g,'')));
+      const lastEntry = data[data.length-1];
+      const missing = getMissingWorkdays(lastEntry.date, todayStr);
+      let changed = false;
+      for (const d of missing) {
+        if (!data.find(r=>r.date===d)) {
+          data.push({...lastEntry, date: d, kaynak: 'taşıma (otomatik eksik gün)'});
+          changed = true; addedCount++;
+        }
+      }
+      if (changed) {
+        data.sort((a,b)=>a.date.localeCompare(b.date));
+        await ghPut('contents/data/gold.json',
+          { message: `fix: ${todayStr} eksik gün backfill (gold)`,
+            content: btoa(unescape(encodeURIComponent(JSON.stringify(data,null,2)))),
+            sha: file.sha, branch: 'main' }, token);
+        _goldData = data;
+        renderGold(_goldData);
+      }
+    }
+
+    // GBP backfill
+    {
+      const file = await ghGet('contents/data/gbp.json?ref=main', token);
+      const data = JSON.parse(atob(file.content.replace(/\n/g,'')));
+      const lastEntry = data[data.length-1];
+      const missing = getMissingWorkdays(lastEntry.date, todayStr);
+      let changed = false;
+      for (const d of missing) {
+        if (!data.find(r=>r.date===d)) {
+          data.push({...lastEntry, date: d, kaynak: 'taşıma (otomatik eksik gün)'});
+          changed = true;
+        }
+      }
+      if (changed) {
+        data.sort((a,b)=>a.date.localeCompare(b.date));
+        // SHA yeniden al (gold commit SHA değiştirmiş olabilir — farklı dosya, sorun yok ama yine de taze çek)
+        const freshFile = await ghGet('contents/data/gbp.json?ref=main', token);
+        await ghPut('contents/data/gbp.json',
+          { message: `fix: ${todayStr} eksik gün backfill (gbp)`,
+            content: btoa(unescape(encodeURIComponent(JSON.stringify(data,null,2)))),
+            sha: freshFile.sha, branch: 'main' }, token);
+        _gbpData = data;
+        renderGbp(_gbpData);
+      }
+    }
+
+    btn.disabled = false;
+    lbl.textContent = 'Tamamlandı ✓';
+    icon.textContent = '✅';
+    res.textContent = `${addedCount > 0 ? addedCount + ' gün eklendi' : 'Zaten güncel'}. Grafik güncellendi.`;
+    res.style.color = 'var(--green)';
+    document.getElementById('staleBanner').classList.remove('show');
+
+  } catch(e) {
+    btn.disabled = false;
+    lbl.textContent = 'Eksik Günleri Ekle (son değerle)';
+    icon.textContent = '🔄';
+    res.textContent = '❌ ' + e.message;
+    res.style.color = 'var(--red)';
+  }
+}
+
 // ══════════════════════════════════════════
 // MODAL
 // ══════════════════════════════════════════
+let _modalDate = today; // hangi tarihin düzeltileceği
+
 function openModal() {
   // Token varsa geri doldur
   const t = sessionStorage.getItem('gh_token');
   if (t) document.getElementById('mToken').value = t;
 
-  // Bugünün mevcut değerlerini placeholder olarak göster
-  const ge = _goldData ? (_goldData.find(r=>r.date===today)||_goldData[_goldData.length-1]) : null;
-  const be = _gbpData  ? (_gbpData.find(r=>r.date===today)||_gbpData[_gbpData.length-1])   : null;
+  // Tarih input'unu ayarla — varsayılan: bugün
+  _modalDate = today;
+  const dateInput = document.getElementById('mDateInput');
+  dateInput.value = today;
+  dateInput.max   = today;
 
-  document.getElementById('mDate').textContent = today;
-
-  if (ge) {
-    document.getElementById('mGoldAlis').placeholder  = fmtD(ge.alis)  + ' (mevcut)';
-    document.getElementById('mGoldSatis').placeholder = fmtD(ge.satis) + ' (mevcut)';
-  }
-  if (be) {
-    document.getElementById('mGbpIbAlis').placeholder  = fmtD(be.isbank_alis||be.alis)   + ' (mevcut)';
-    document.getElementById('mGbpIbSatis').placeholder = fmtD(be.isbank_satis||be.satis)  + ' (mevcut)';
-    document.getElementById('mGbpTcAlis').placeholder  = fmtD(be.tcmb_alis)  + ' (mevcut)';
-    document.getElementById('mGbpTcSatis').placeholder = fmtD(be.tcmb_satis) + ' (mevcut)';
-  }
+  fillModalPlaceholders(_modalDate);
 
   // inputları temizle, alertleri gizle
   ['mGoldAlis','mGoldSatis','mGbpIbAlis','mGbpIbSatis','mGbpTcAlis','mGbpTcSatis']
@@ -742,6 +935,34 @@ function openModal() {
 
   document.getElementById('modalOverlay').classList.add('open');
   document.body.style.overflow = 'hidden';
+}
+
+function onModalDateChange(val) {
+  if (!val) return;
+  _modalDate = val;
+  const isToday = val === today;
+  document.getElementById('mDateHint').textContent = isToday ? '' : `(geçmiş tarih: ${dd(val)})`;
+  ['mGoldAlis','mGoldSatis','mGbpIbAlis','mGbpIbSatis','mGbpTcAlis','mGbpTcSatis']
+    .forEach(id => { document.getElementById(id).value = ''; });
+  ['dGoldAlis','dGoldSatis','dGbpIbAlis','dGbpIbSatis'].forEach(id=>{ document.getElementById(id).textContent=''; });
+  fillModalPlaceholders(val);
+  hideModalAlerts();
+}
+
+function fillModalPlaceholders(dateStr) {
+  const ge = _goldData ? (_goldData.find(r=>r.date===dateStr)||_goldData[_goldData.length-1]) : null;
+  const be = _gbpData  ? (_gbpData.find(r=>r.date===dateStr)||_gbpData[_gbpData.length-1])   : null;
+
+  if (ge) {
+    document.getElementById('mGoldAlis').placeholder  = fmtD(ge.alis)  + ' (mevcut)';
+    document.getElementById('mGoldSatis').placeholder = fmtD(ge.satis) + ' (mevcut)';
+  }
+  if (be) {
+    document.getElementById('mGbpIbAlis').placeholder  = fmtD(be.isbank_alis||be.alis)  + ' (mevcut)';
+    document.getElementById('mGbpIbSatis').placeholder = fmtD(be.isbank_satis||be.satis) + ' (mevcut)';
+    document.getElementById('mGbpTcAlis').placeholder  = fmtD(be.tcmb_alis)  + ' (mevcut)';
+    document.getElementById('mGbpTcSatis').placeholder = fmtD(be.tcmb_satis) + ' (mevcut)';
+  }
 }
 
 function closeModal() {
@@ -799,6 +1020,8 @@ async function modalSave() {
   const token = document.getElementById('mToken').value.trim();
   if (!token) return showModalErr('GitHub token girilmedi.');
 
+  const targetDate = _modalDate || today;
+
   const gAlis  = parseFloat(document.getElementById('mGoldAlis').value);
   const gSatis = parseFloat(document.getElementById('mGoldSatis').value);
   const ibAlis = parseFloat(document.getElementById('mGbpIbAlis').value);
@@ -813,16 +1036,17 @@ async function modalSave() {
 
   setBusy(true);
   try {
-    const commitMsg = `fix: ${today} fiyat manuel revizyonu`;
+    const commitMsg = `fix: ${targetDate} fiyat manuel revizyonu`;
 
     if (goldChanged) {
       setSpinnerMsg('gold.json alınıyor...');
       const file = await ghGet('contents/data/gold.json?ref=main', token);
       const data = JSON.parse(atob(file.content.replace(/\n/g,'')));
-      const idx  = data.findIndex(r=>r.date===today);
-      const entry= idx>=0 ? {...data[idx]} : {date:today};
-      if (!isNaN(gAlis))  entry.alis   = gAlis;
-      if (!isNaN(gSatis)) entry.satis  = gSatis;
+      const idx  = data.findIndex(r=>r.date===targetDate);
+      const base = _goldData[_goldData.length-1];
+      const entry= idx>=0 ? {...data[idx]} : {date:targetDate, alis:base.alis, satis:base.satis};
+      if (!isNaN(gAlis))  entry.alis  = gAlis;
+      if (!isNaN(gSatis)) entry.satis = gSatis;
       entry.kaynak = 'İşBankası (manuel)';
       if (idx>=0) data[idx]=entry; else { data.push(entry); data.sort((a,b)=>a.date.localeCompare(b.date)); }
       setSpinnerMsg('gold.json kaydediliyor...');
@@ -834,13 +1058,13 @@ async function modalSave() {
       setSpinnerMsg('gbp.json alınıyor...');
       const file = await ghGet('contents/data/gbp.json?ref=main', token);
       const data = JSON.parse(atob(file.content.replace(/\n/g,'')));
-      const idx  = data.findIndex(r=>r.date===today);
-      const entry= idx>=0 ? {...data[idx]} : {..._gbpData[_gbpData.length-1], date:today};
+      const idx  = data.findIndex(r=>r.date===targetDate);
+      const base = _gbpData[_gbpData.length-1];
+      const entry= idx>=0 ? {...data[idx]} : {...base, date:targetDate};
       if (!isNaN(ibAlis))  { entry.isbank_alis  = ibAlis;  entry.alis  = ibAlis; }
       if (!isNaN(ibSatis)) { entry.isbank_satis = ibSatis; entry.satis = ibSatis; }
       if (!isNaN(tcAlis))  entry.tcmb_alis  = tcAlis;
       if (!isNaN(tcSatis)) entry.tcmb_satis = tcSatis;
-      // farkı yeniden hesapla
       const ibS = entry.isbank_satis||entry.satis;
       const tcS = entry.tcmb_satis;
       if (ibS && tcS) {
@@ -854,12 +1078,10 @@ async function modalSave() {
       _gbpData = data;
     }
 
-    // Sayfayı güncelle
     if (goldChanged) renderGold(_goldData);
     if (gbpChanged)  renderGbp(_gbpData);
-
     setBusy(false);
-    showModalOk('Kaydedildi! Grafik ve metrikler güncellendi.');
+    showModalOk(`Kaydedildi! (${dd(targetDate)}) Grafik ve metrikler güncellendi.`);
   } catch(e) {
     setBusy(false);
     showModalErr(e.message);
