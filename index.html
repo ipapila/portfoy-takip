@@ -358,14 +358,19 @@
       <div class="sub">TL (45 × 6.689,22)</div>
     </div>
     <div class="metric">
-      <div class="lbl">Güncel Alış</div>
+      <div class="lbl">İşBankası Alış</div>
       <div class="val" id="gAlis">—</div>
       <div class="sub">TL/gram</div>
     </div>
     <div class="metric">
-      <div class="lbl">Güncel Satış</div>
+      <div class="lbl">İşBankası Satış</div>
       <div class="val" id="gSatis">—</div>
       <div class="sub">TL/gram</div>
+    </div>
+    <div class="metric">
+      <div class="lbl">TCMB Satış</div>
+      <div class="val" id="gTcmb">—</div>
+      <div class="sub" id="gFarkSub">TL/gram (resmi)</div>
     </div>
     <div class="metric">
       <div class="lbl">Portföy Değeri</div>
@@ -383,18 +388,20 @@
       <span class="chart-ttl">Portföy değeri (TL) ve gram fiyatı (TL/gr)</span>
       <div class="legend">
         <span class="leg-item"><span class="leg-dot" style="background:var(--gold)"></span>Portföy TL</span>
-        <span class="leg-item"><span class="leg-dot" style="background:rgba(212,168,71,.45)"></span>Satış TL/gr</span>
-        <span class="leg-item"><span class="leg-dot" style="background:rgba(212,168,71,.25)"></span>Alış TL/gr</span>
+        <span class="leg-item"><span class="leg-dot" style="background:rgba(212,168,71,.7)"></span>İşBank Satış</span>
+        <span class="leg-item"><span class="leg-dot" style="background:rgba(150,150,150,.5)"></span>TCMB Satış</span>
+        <span class="leg-item"><span class="leg-dot" style="background:rgba(212,168,71,.3)"></span>İşBank Alış</span>
       </div>
     </div>
     <div class="chart-wrap"><canvas id="goldChart"></canvas></div>
   </div>
   <div class="tbl-card">
-    <div class="tbl-head gold-cols">
+    <div class="tbl-head" style="grid-template-columns:1.1fr 1fr 1fr 1fr .9fr 1.1fr">
       <span>Tarih</span>
-      <span class="ta-r col-alis-h">Alış</span>
-      <span class="ta-r col-satis-h">Satış</span>
-      <span class="ta-r">Portföy (TL)</span>
+      <span class="ta-r">İşBank Alış</span>
+      <span class="ta-r">İşBank Satış</span>
+      <span class="ta-r">TCMB Satış</span>
+      <span class="ta-r">Fark</span>
       <span class="ta-r">Kâr / Zarar</span>
     </div>
     <div id="goldTableTop"></div>
@@ -540,14 +547,24 @@
     </div>
     <div class="field-row2">
       <div class="field">
-        <label>Alış (TL/gram)</label>
+        <label>İşBankası Alış (TL/gram)</label>
         <input type="number" id="mGoldAlis" step="0.01" placeholder="—" oninput="showDiff('mGoldAlis','dGoldAlis')">
         <div class="diff-hint" id="dGoldAlis"></div>
       </div>
       <div class="field">
-        <label>Satış (TL/gram)</label>
+        <label>İşBankası Satış (TL/gram)</label>
         <input type="number" id="mGoldSatis" step="0.01" placeholder="—" oninput="showDiff('mGoldSatis','dGoldSatis')">
         <div class="diff-hint" id="dGoldSatis"></div>
+      </div>
+    </div>
+    <div class="field-row2">
+      <div class="field">
+        <label>TCMB Alış (TL/gram)</label>
+        <input type="number" id="mGoldTcAlis" step="0.01" placeholder="—">
+      </div>
+      <div class="field">
+        <label>TCMB Satış (TL/gram)</label>
+        <input type="number" id="mGoldTcSatis" step="0.01" placeholder="—">
       </div>
     </div>
 
@@ -654,24 +671,75 @@ function buildChart(id, labels, portfolioVals, satisDizi, alisDizi, color) {
 // ── RENDER ────────────────────────────────────────────────
 function renderGold(data) {
   const last = data[data.length-1];
-  const portDeger = last.satis * GOLD_XAU;
+  const ibSatis = last.isbank_satis || last.satis;
+  const ibAlis  = last.isbank_alis  || last.alis;
+  const portDeger = ibSatis * GOLD_XAU;
   const pnl = portDeger - GOLD_COST;
   const pct = (pnl/GOLD_COST*100).toFixed(2);
-  document.getElementById('gAlis').textContent  = fmtD(last.alis);
-  document.getElementById('gSatis').textContent = fmtD(last.satis);
+
+  document.getElementById('gAlis').textContent  = fmtD(ibAlis);
+  document.getElementById('gSatis').textContent = fmtD(ibSatis);
   document.getElementById('gDeger').textContent = fmt(portDeger);
   document.getElementById('gPnl').textContent   = sign(pnl)+fmt(pnl)+' TL';
   document.getElementById('gPnl').className     = 'val '+(pnl>=0?'pos':'neg');
   document.getElementById('gPnlPct').textContent= sign(pnl)+pct+'%';
   document.getElementById('gPnlPct').className  = pnl>=0?'sub pos':'sub neg';
+
+  if (last.tcmb_satis) {
+    document.getElementById('gTcmb').textContent = fmtD(last.tcmb_satis);
+    const fark = last.fark_satis != null ? last.fark_satis : (ibSatis - last.tcmb_satis);
+    const fp = (fark / last.tcmb_satis * 100).toFixed(2);
+    document.getElementById('gFarkSub').textContent = `İşBank TCMB'den %${fp} pahalı`;
+  } else {
+    document.getElementById('gTcmb').textContent = '—';
+    document.getElementById('gFarkSub').textContent = 'TL/gram (resmi)';
+  }
+
   const badge = document.getElementById('goldBadge');
   badge.textContent = sign(pnl)+pct+'%';
   badge.style.background = pnl>=0?'rgba(52,199,138,.12)':'rgba(240,96,96,.12)';
   badge.style.color = pnl>=0?'var(--green)':'var(--red)';
+
   if (goldChart) goldChart.destroy();
-  goldChart = buildChart('goldChart', data.map(r=>dd(r.date)), data.map(r=>Math.round(r.satis*GOLD_XAU)), data.map(r=>r.satis), data.map(r=>r.alis), 'rgb(212,168,71)');
+  // Grafik: Portföy TL (y1) + İşBank Satış, TCMB Satış, İşBank Alış (y2)
+  const labels = data.map(r => dd(r.date));
+  goldChart = new Chart(document.getElementById('goldChart').getContext('2d'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label:'Portföy (TL)', data:data.map(r=>Math.round((r.isbank_satis||r.satis)*GOLD_XAU)), borderColor:'rgb(212,168,71)', backgroundColor:'rgba(212,168,71,.08)', fill:true, tension:0.35, pointRadius:2.5, borderWidth:2, yAxisID:'y1' },
+        { label:'İşBank Satış', data:data.map(r=>r.isbank_satis||r.satis), borderColor:'rgba(212,168,71,.8)', borderDash:[5,3], fill:false, tension:0.35, pointRadius:0, borderWidth:1.5, yAxisID:'y2' },
+        { label:'TCMB Satış',   data:data.map(r=>r.tcmb_satis||null),       borderColor:'rgba(150,150,150,.5)', borderDash:[3,3], fill:false, tension:0.35, pointRadius:0, borderWidth:1, yAxisID:'y2' },
+        { label:'İşBank Alış',  data:data.map(r=>r.isbank_alis||r.alis),   borderColor:'rgba(212,168,71,.35)', fill:false, tension:0.35, pointRadius:0, borderWidth:1, yAxisID:'y2' },
+      ]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
+      plugins:{ legend:{display:false}, tooltip:{ backgroundColor:'#1a2030', borderColor:'#2a3348', borderWidth:1, titleColor:'#9aa5b8', bodyColor:'#e8eaf0', padding:10 }},
+      scales:{
+        x:{ grid:{color:'rgba(255,255,255,.04)'}, ticks:{color:'#6b7690',font:{size:11},maxRotation:0,maxTicksLimit:8} },
+        y1:{ type:'linear', position:'left',  grid:{color:'rgba(255,255,255,.04)'}, ticks:{color:'#6b7690',font:{size:11}} },
+        y2:{ type:'linear', position:'right', grid:{display:false}, ticks:{color:'rgba(212,168,71,.6)',font:{size:11}} }
+      }
+    }
+  });
+
   const rows = [...data].reverse().slice(0,30);
-  const makeGoldRow = r => { const pv=r.satis*GOLD_XAU, p=pv-GOLD_COST, pct=(p/GOLD_COST*100).toFixed(2); return `<div class="tbl-row gold-cols"><span>${dd(r.date)}</span><span class="ta-r col-alis">${fmtD(r.alis)}</span><span class="ta-r col-satis">${fmtD(r.satis)}</span><span class="ta-r">${fmt(pv)}</span><span class="ta-r"><span class="${p>=0?'pnl-badge pnl-pos':'pnl-badge pnl-neg'}">${sign(p)}${fmt(p)} TL</span> <small style="color:var(--muted)">${sign(p)}${pct}%</small></span></div>`; };
+  const makeGoldRow = r => {
+    const ibS = r.isbank_satis || r.satis;
+    const ibA = r.isbank_alis  || r.alis;
+    const fark = r.fark_satis != null ? r.fark_satis : (r.tcmb_satis ? +(ibS - r.tcmb_satis).toFixed(2) : null);
+    const pv = ibS * GOLD_XAU, p = pv - GOLD_COST, pc = (p/GOLD_COST*100).toFixed(2);
+    return `<div class="tbl-row" style="grid-template-columns:1.1fr 1fr 1fr 1fr .9fr 1.1fr">
+      <span>${dd(r.date)}</span>
+      <span class="ta-r">${fmtD(ibA)}</span>
+      <span class="ta-r">${fmtD(ibS)}</span>
+      <span class="ta-r" style="color:var(--muted)">${r.tcmb_satis ? fmtD(r.tcmb_satis) : '—'}</span>
+      <span class="ta-r" style="color:#f5a623">${fark != null ? '+'+fark.toFixed(2) : '—'}</span>
+      <span class="ta-r"><span class="${p>=0?'pnl-badge pnl-pos':'pnl-badge pnl-neg'}">${sign(p)}${fmt(p)} TL</span> <small style="color:var(--muted)">${sign(p)}${pc}%</small></span>
+    </div>`;
+  };
   document.getElementById('goldTableTop').innerHTML   = rows.slice(0,3).map(makeGoldRow).join('');
   document.getElementById('goldTableExtra').innerHTML = rows.slice(3).map(makeGoldRow).join('');
   const gt = document.getElementById('goldToggle');
@@ -928,7 +996,7 @@ function openModal() {
   fillModalPlaceholders(_modalDate);
 
   // inputları temizle, alertleri gizle
-  ['mGoldAlis','mGoldSatis','mGbpIbAlis','mGbpIbSatis','mGbpTcAlis','mGbpTcSatis']
+  ['mGoldAlis','mGoldSatis','mGoldTcAlis','mGoldTcSatis','mGbpIbAlis','mGbpIbSatis','mGbpTcAlis','mGbpTcSatis']
     .forEach(id => { document.getElementById(id).value = ''; });
   ['dGoldAlis','dGoldSatis','dGbpIbAlis','dGbpIbSatis'].forEach(id=>{ document.getElementById(id).textContent=''; });
   hideModalAlerts();
@@ -942,7 +1010,7 @@ function onModalDateChange(val) {
   _modalDate = val;
   const isToday = val === today;
   document.getElementById('mDateHint').textContent = isToday ? '' : `(geçmiş tarih: ${dd(val)})`;
-  ['mGoldAlis','mGoldSatis','mGbpIbAlis','mGbpIbSatis','mGbpTcAlis','mGbpTcSatis']
+  ['mGoldAlis','mGoldSatis','mGoldTcAlis','mGoldTcSatis','mGbpIbAlis','mGbpIbSatis','mGbpTcAlis','mGbpTcSatis']
     .forEach(id => { document.getElementById(id).value = ''; });
   ['dGoldAlis','dGoldSatis','dGbpIbAlis','dGbpIbSatis'].forEach(id=>{ document.getElementById(id).textContent=''; });
   fillModalPlaceholders(val);
@@ -954,8 +1022,10 @@ function fillModalPlaceholders(dateStr) {
   const be = _gbpData  ? (_gbpData.find(r=>r.date===dateStr)||_gbpData[_gbpData.length-1])   : null;
 
   if (ge) {
-    document.getElementById('mGoldAlis').placeholder  = fmtD(ge.alis)  + ' (mevcut)';
-    document.getElementById('mGoldSatis').placeholder = fmtD(ge.satis) + ' (mevcut)';
+    document.getElementById('mGoldAlis').placeholder    = fmtD(ge.isbank_alis||ge.alis)   + ' (mevcut)';
+    document.getElementById('mGoldSatis').placeholder   = fmtD(ge.isbank_satis||ge.satis) + ' (mevcut)';
+    document.getElementById('mGoldTcAlis').placeholder  = fmtD(ge.tcmb_alis)  + ' (mevcut)';
+    document.getElementById('mGoldTcSatis').placeholder = fmtD(ge.tcmb_satis) + ' (mevcut)';
   }
   if (be) {
     document.getElementById('mGbpIbAlis').placeholder  = fmtD(be.isbank_alis||be.alis)  + ' (mevcut)';
@@ -1022,14 +1092,16 @@ async function modalSave() {
 
   const targetDate = _modalDate || today;
 
-  const gAlis  = parseFloat(document.getElementById('mGoldAlis').value);
-  const gSatis = parseFloat(document.getElementById('mGoldSatis').value);
-  const ibAlis = parseFloat(document.getElementById('mGbpIbAlis').value);
+  const gAlis    = parseFloat(document.getElementById('mGoldAlis').value);
+  const gSatis   = parseFloat(document.getElementById('mGoldSatis').value);
+  const gTcAlis  = parseFloat(document.getElementById('mGoldTcAlis').value);
+  const gTcSatis = parseFloat(document.getElementById('mGoldTcSatis').value);
+  const ibAlis   = parseFloat(document.getElementById('mGbpIbAlis').value);
   const ibSatis= parseFloat(document.getElementById('mGbpIbSatis').value);
   const tcAlis = parseFloat(document.getElementById('mGbpTcAlis').value);
   const tcSatis= parseFloat(document.getElementById('mGbpTcSatis').value);
 
-  const goldChanged = !isNaN(gAlis) || !isNaN(gSatis);
+  const goldChanged = !isNaN(gAlis) || !isNaN(gSatis) || !isNaN(gTcAlis) || !isNaN(gTcSatis);
   const gbpChanged  = !isNaN(ibAlis)||!isNaN(ibSatis)||!isNaN(tcAlis)||!isNaN(tcSatis);
 
   if (!goldChanged && !gbpChanged) return showModalErr('Düzeltilecek alan yok — en az bir değer girin.');
@@ -1045,9 +1117,17 @@ async function modalSave() {
       const idx  = data.findIndex(r=>r.date===targetDate);
       const base = _goldData[_goldData.length-1];
       const entry= idx>=0 ? {...data[idx]} : {date:targetDate, alis:base.alis, satis:base.satis};
-      if (!isNaN(gAlis))  entry.alis  = gAlis;
-      if (!isNaN(gSatis)) entry.satis = gSatis;
-      entry.kaynak = 'İşBankası (manuel)';
+      if (!isNaN(gAlis))    { entry.isbank_alis  = gAlis;   entry.alis  = gAlis; }
+      if (!isNaN(gSatis))   { entry.isbank_satis = gSatis;  entry.satis = gSatis; }
+      if (!isNaN(gTcAlis))  entry.tcmb_alis  = gTcAlis;
+      if (!isNaN(gTcSatis)) entry.tcmb_satis = gTcSatis;
+      const ibS = entry.isbank_satis || entry.satis;
+      const tcS = entry.tcmb_satis;
+      if (ibS && tcS) {
+        entry.fark_satis = +((ibS - tcS).toFixed(2));
+        entry.fark_alis  = +(((entry.isbank_alis||entry.alis) - (entry.tcmb_alis||0)).toFixed(2));
+      }
+      entry.kaynak = 'İşBankası+TCMB (manuel)';
       if (idx>=0) data[idx]=entry; else { data.push(entry); data.sort((a,b)=>a.date.localeCompare(b.date)); }
       setSpinnerMsg('gold.json kaydediliyor...');
       await ghPut('contents/data/gold.json', { message:commitMsg, content:btoa(unescape(encodeURIComponent(JSON.stringify(data,null,2)))), sha:file.sha, branch:'main' }, token);
