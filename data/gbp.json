@@ -1042,5 +1042,15 @@
     "tcmb_satis": 61.5878,
     "fark_satis": 1.6784,
     "fark_alis": -1.3277
+  },
+  {
+    "date": "2026-06-29",
+    "alis": 61.4404,
+    "satis": 61.7607,
+    "isbank_alis": null,
+    "isbank_satis": null,
+    "tcmb_alis": 61.4404,
+    "tcmb_satis": 61.7607,
+    "kaynak": "TCMB (İşBankası başarısız)"
   }
 ]
