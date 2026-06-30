@@ -1045,12 +1045,12 @@
   },
   {
     "date": "2026-06-29",
-    "alis": 61.4404,
-    "satis": 61.7607,
-    "isbank_alis": null,
-    "isbank_satis": null,
-    "tcmb_alis": 61.4404,
-    "tcmb_satis": 61.7607,
+    "alis": 62.4404,
+    "satis": 62.7607,
+    "isbank_alis": 62.4404,
+    "isbank_satis": 62.7607,
+    "tcmb_alis": 62.4404,
+    "tcmb_satis": 62.7607,
     "kaynak": "TCMB (ÃÂ°ÃÂBankasÃÂ± baÃÂarÃÂ±sÃÂ±z)"
   },
   {
