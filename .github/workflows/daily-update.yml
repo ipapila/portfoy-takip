@@ -45,6 +45,15 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: python scripts/fetch_prices.py
 
+      - name: Debug dump varsa yükle (altın sayfası bulunamadıysa)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-altin-sayfa
+          path: debug/
+          if-no-files-found: ignore
+          retention-days: 3
+
       - name: Manuel revizyonu koru (main'deki manuel kayıt varsa öncelikli)
         run: |
           python3 << 'PYEOF'
