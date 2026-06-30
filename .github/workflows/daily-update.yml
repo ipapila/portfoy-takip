@@ -24,6 +24,14 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Chrome kur (Selenium için)
+        uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: stable
+
+      - name: Python bağımlılıklarını kur
+        run: pip install selenium webdriver-manager --quiet
+
       - name: API key kontrolü
         run: |
           if [ -z "${{ secrets.ANTHROPIC_API_KEY }}" ]; then
