@@ -140,7 +140,7 @@ def selenium_isbank_gold(driver):
     İş Bankası altın fiyatları sayfasından Selenium ile gram altın alış/satış çek.
     Birden fazla selector stratejisi dener; hepsi başarısız olursa HTML dump'tan regex.
     """
-    url = "https://www.isbank.com.tr/altin-fiyatlari"
+    url = "https://www.isbank.com.tr/altin"
     log(f"  🌐 Selenium: {url}")
     driver.get(url)
 
@@ -151,6 +151,17 @@ def selenium_isbank_gold(driver):
     except Exception:
         pass
     time.sleep(8)  # JS render + olası lazy-load için ek bekleme
+
+    # 404 kontrolü — yanlış URL'e düşmüşsek hemen fallback URL'e geç
+    try:
+        body_text_check = driver.find_element(By.TAG_NAME, "body").text
+        if "Aradığınız sayfaya ulaşılamıyor" in body_text_check or "404" in driver.title:
+            log("  ⚠  /altin sayfası 404 döndü, /yatirim-fonu-ve-altin deneniyor")
+            url = "https://www.isbank.com.tr/yatirim-fonu-ve-altin"
+            driver.get(url)
+            time.sleep(8)
+    except Exception:
+        pass
 
     # Strateji 1: data-* attribute ile (en güvenilir)
     selectors_alis = [
