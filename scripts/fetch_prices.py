@@ -137,49 +137,24 @@ def make_driver():
 
 def selenium_isbank_gold(driver):
     """
-    İş Bankası altın fiyatları sayfasından Selenium ile gram altın alış/satış çek.
-    Birden fazla selector stratejisi dener; hepsi başarısız olursa HTML dump'tan regex.
+    İş Bankası'nın kendi sitesinde artık herkese açık canlı gram altın fiyat
+    sayfası bulunmuyor (/altin-fiyatlari 404, /altin sadece ürün tanıtımı).
+    Bu yüzden İş Bankası'na özel, bankalardan veri toplayan güvenilir bir
+    aracı siteden (anlikaltinfiyatlari.com) İş Bankası gram altın bayi
+    alış/satış kurunu Selenium ile çekiyoruz.
     """
-    url = "https://www.isbank.com.tr/altin"
+    url = "https://anlikaltinfiyatlari.com/banka/is-bankasi"
     log(f"  🌐 Selenium: {url}")
     driver.get(url)
 
-    # Sayfanın yüklenmesini bekle — fiyat içeren bir sayısal element gelene dek
     wait = WebDriverWait(driver, 20)
     try:
         wait.until(lambda d: d.execute_script("return document.readyState") == "complete")
     except Exception:
         pass
-    time.sleep(8)  # JS render + olası lazy-load için ek bekleme
+    time.sleep(6)
 
-    # 404 kontrolü — yanlış URL'e düşmüşsek hemen fallback URL'e geç
-    try:
-        body_text_check = driver.find_element(By.TAG_NAME, "body").text
-        if "Aradığınız sayfaya ulaşılamıyor" in body_text_check or "404" in driver.title:
-            log("  ⚠  /altin sayfası 404 döndü, /yatirim-fonu-ve-altin deneniyor")
-            url = "https://www.isbank.com.tr/yatirim-fonu-ve-altin"
-            driver.get(url)
-            time.sleep(8)
-    except Exception:
-        pass
-
-    # Strateji 1: data-* attribute ile (en güvenilir)
-    selectors_alis = [
-        "[data-currency='XAUTRY'][data-type='buying']",
-        "[data-code='XAUTRY'] .buying",
-        ".gold-price .buying-rate",
-        ".altin-fiyat .alis",
-        "tr:contains('Gram Altın') td:nth-child(2)",
-    ]
-    selectors_satis = [
-        "[data-currency='XAUTRY'][data-type='selling']",
-        "[data-code='XAUTRY'] .selling",
-        ".gold-price .selling-rate",
-        ".altin-fiyat .satis",
-        "tr:contains('Gram Altın') td:nth-child(3)",
-    ]
-
-    # Strateji 2: sayfadaki tüm tabloları tara, "gram" + "altın" içereni bul
+    # Strateji 1: "gram altın" geçen tablo satırını bul
     try:
         rows = driver.find_elements(By.CSS_SELECTOR, "tr")
         for row in rows:
@@ -200,15 +175,15 @@ def selenium_isbank_gold(driver):
     except Exception as e:
         log(f"  ⚠  Selenium tablo tarama: {e}")
 
-    # Strateji 2b: sadece "altın" geçen herhangi bir satır/kart (tr, li, div) — daha geniş
+    # Strateji 2: sayfa genelinde "alış" / "satış" etiketli kart/div yapıları
     try:
-        candidates = driver.find_elements(By.CSS_SELECTOR, "tr, li, div")
+        candidates = driver.find_elements(By.CSS_SELECTOR, "div, li, tr, span")
         for el in candidates:
             try:
                 text = el.text.lower()
             except Exception:
                 continue
-            if "altın" in text and "gram" in text and len(text) < 300:
+            if "alış" in text and "satış" in text and len(text) < 200:
                 nums = []
                 for m in re.finditer(r'\b[5-9]\.\d{3}[,.]?\d{0,2}\b|\b1[0-9]\.\d{3}[,.]?\d{0,2}\b', el.text):
                     try:
@@ -218,13 +193,13 @@ def selenium_isbank_gold(driver):
                     except Exception:
                         pass
                 nums = sorted(set(nums))
-                if len(nums) >= 2 and (nums[1] - nums[0]) / nums[0] < 0.20:
-                    log(f"  ✅ Selenium Altın (kart/div): alış={nums[0]} satış={nums[1]}")
+                if len(nums) >= 2 and (nums[1] - nums[0]) / nums[0] < 0.25:
+                    log(f"  ✅ Selenium Altın (alış/satış kartı): alış={nums[0]} satış={nums[1]}")
                     return {"alis": nums[0], "satis": nums[1]}
     except Exception as e:
-        log(f"  ⚠  Selenium kart/div tarama: {e}")
+        log(f"  ⚠  Selenium kart tarama: {e}")
 
-    # Strateji 3: sayfanın tüm metninden fiyat büyüklüğünde sayıları topla
+    # Strateji 3: sayfanın tüm metninden fiyat büyüklüğünde sayı çiftleri
     try:
         page_text = driver.find_element(By.TAG_NAME, "body").text
         numbers = []
@@ -235,7 +210,6 @@ def selenium_isbank_gold(driver):
                 pass
         numbers = sorted(set(numbers))
         if len(numbers) >= 2:
-            # En küçük = alış, bir büyüğü = satış (alış < satış)
             pairs = [(a, b) for a in numbers for b in numbers
                      if b > a and 0 < (b - a) / a < 0.20]
             if pairs:
@@ -395,9 +369,13 @@ def extract_json(text):
 
 def fetch_isbank_gold_web():
     prompt = (
-        f"Bugün {TODAY} tarihinde İş Bankası resmi sitesinde (isbank.com.tr) "
-        "yayınlanan gram altın BAYİ ALIŞ ve BAYİ SATIŞ fiyatı nedir? "
-        "Önce https://www.isbank.com.tr/altin-fiyatlari sayfasını kontrol et. "
+        f"Bugün {TODAY} tarihinde Türkiye İş Bankası'nın gram altın bayi "
+        "ALIŞ ve SATIŞ fiyatı nedir? İş Bankası'nın kendi sitesinde artık "
+        "herkese açık canlı fiyat sayfası bulunmuyor, bu yüzden şu kaynakları "
+        "sırayla kontrol et: "
+        "https://anlikaltinfiyatlari.com/banka/is-bankasi , "
+        "https://canlialtinfiyatlari.com/banka/is-bankasi.html , "
+        "https://altin.doviz.com/isbankasi/gram-altin . "
         "Sonucu YALNIZCA şu JSON formatında döndür, başka metin ekleme: "
         '{"alis": <sayi>, "satis": <sayi>} '
         "Ondalık için nokta kullan."
@@ -432,7 +410,7 @@ def get_isbank_gold(driver):
             result = selenium_isbank_gold(driver)
             validate(result["alis"],  GOLD_MIN, GOLD_MAX, "Selenium Altın alış")
             validate(result["satis"], GOLD_MIN, GOLD_MAX, "Selenium Altın satış")
-            result["kaynak_detay"] = "Selenium"
+            result["kaynak_detay"] = "Selenium/anlikaltinfiyatlari"
             return result
         except Exception as e:
             log(f"  ⚠  Selenium Altın başarısız, Claude'a geçiliyor: {e}")
