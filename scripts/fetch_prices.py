@@ -2,22 +2,25 @@
 """
 Günlük fiyat çekme scripti.
 
-  ALTIN (gram):
-    1. TCMB XML → resmi gram altın alış/satış (birincil, güvenilir)
-    2. Claude web araması → İş Bankası gram altın bayi alış/satış (ikincil)
-    Her ikisi ayrı alan olarak kaydedilir; İşBankası varsa o, yoksa TCMB ana değer.
+  ALTIN (gram) — öncelik sırası:
+    1. Selenium → İş Bankası isbank.com.tr/altin-fiyatlari (gerçek browser)
+    2. Claude web araması → İş Bankası (fallback)
+    3. TCMB XML → resmi kur (her zaman çekilir, karşılaştırma için)
 
-  GBP/TRY:
-    1. TCMB XML → resmi GBP kuru (birincil)
-    2. Claude web araması → İş Bankası GBP bayi kuru (ikincil)
+  GBP/TRY — öncelik sırası:
+    1. Selenium → İş Bankası isbank.com.tr/doviz-kurlari (gerçek browser)
+    2. Claude web araması → İş Bankası (fallback)
+    3. TCMB XML → resmi kur (birincil güvenilir kaynak)
 
-Çıktı: data/gold.json, data/gbp.json
+  Her iki kaynak ayrı alan olarak kaydedilir.
+  Çıktı: data/gold.json, data/gbp.json
 """
 
 import json
 import os
 import re
 import sys
+import time
 import urllib.request
 import xml.etree.ElementTree as ET
 from datetime import date, datetime
@@ -28,7 +31,21 @@ GBP_FILE  = "data/gbp.json"
 TODAY     = date.today().isoformat()
 
 GOLD_MIN, GOLD_MAX = 3000.0, 25000.0
-GBP_MIN,  GBP_MAX  = 30.0,  200.0
+GBP_MIN,  GBP_MAX  = 30.0,   200.0
+
+# Selenium kullanılabilir mi?
+SELENIUM_OK = False
+try:
+    from selenium import webdriver
+    from selenium.webdriver.chrome.options import Options
+    from selenium.webdriver.chrome.service import Service
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.support.ui import WebDriverWait
+    from selenium.webdriver.support import expected_conditions as EC
+    from selenium.common.exceptions import TimeoutException, NoSuchElementException
+    SELENIUM_OK = True
+except ImportError:
+    pass
 
 
 # ── YARDIMCILAR ───────────────────────────────────────────────────────────────
@@ -68,59 +85,238 @@ def existing_entry(records, today):
             return r
     return None
 
+def parse_tr_number(s):
+    """'6.531,13' veya '6531.13' → 6531.13"""
+    s = s.strip().replace("\xa0", "").replace(" ", "")
+    if re.match(r'^\d{1,3}(\.\d{3})+(,\d+)?$', s):
+        # Türk formatı: 6.531,13
+        s = s.replace(".", "").replace(",", ".")
+    else:
+        s = s.replace(",", ".")
+    return float(s)
+
+
+# ── SELENIUM DRIVER ───────────────────────────────────────────────────────────
+
+def make_driver():
+    opts = Options()
+    opts.add_argument("--headless=new")
+    opts.add_argument("--no-sandbox")
+    opts.add_argument("--disable-dev-shm-usage")
+    opts.add_argument("--disable-gpu")
+    opts.add_argument("--window-size=1280,900")
+    opts.add_argument("--disable-blink-features=AutomationControlled")
+    opts.add_experimental_option("excludeSwitches", ["enable-automation"])
+    opts.add_experimental_option("useAutomationExtension", False)
+    opts.add_argument(
+        "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+    )
+    # GitHub Actions'da google-chrome-stable kurulu olur
+    # Lokal geliştirmede PATH'teki Chrome kullanılır
+    try:
+        driver = webdriver.Chrome(options=opts)
+    except Exception:
+        # chromedriver PATH'te yoksa webdriver-manager dene
+        try:
+            from webdriver_manager.chrome import ChromeDriverManager
+            driver = webdriver.Chrome(
+                service=Service(ChromeDriverManager().install()),
+                options=opts
+            )
+        except Exception as e:
+            raise RuntimeError(f"Chrome driver başlatılamadı: {e}")
+    driver.execute_cdp_cmd(
+        "Page.addScriptToEvaluateOnNewDocument",
+        {"source": "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"}
+    )
+    return driver
+
+
+# ── SELENIUM: İŞ BANKASI ALTIN ───────────────────────────────────────────────
+
+def selenium_isbank_gold(driver):
+    """
+    İş Bankası altın fiyatları sayfasından Selenium ile gram altın alış/satış çek.
+    Birden fazla selector stratejisi dener; hepsi başarısız olursa HTML dump'tan regex.
+    """
+    url = "https://www.isbank.com.tr/altin-fiyatlari"
+    log(f"  🌐 Selenium: {url}")
+    driver.get(url)
+
+    # Sayfanın yüklenmesini bekle — fiyat içeren bir sayısal element gelene dek
+    wait = WebDriverWait(driver, 20)
+
+    # Strateji 1: data-* attribute ile (en güvenilir)
+    selectors_alis = [
+        "[data-currency='XAUTRY'][data-type='buying']",
+        "[data-code='XAUTRY'] .buying",
+        ".gold-price .buying-rate",
+        ".altin-fiyat .alis",
+        "tr:contains('Gram Altın') td:nth-child(2)",
+    ]
+    selectors_satis = [
+        "[data-currency='XAUTRY'][data-type='selling']",
+        "[data-code='XAUTRY'] .selling",
+        ".gold-price .selling-rate",
+        ".altin-fiyat .satis",
+        "tr:contains('Gram Altın') td:nth-child(3)",
+    ]
+
+    # Önce kısa bekle — JS yüklensin
+    time.sleep(5)
+
+    # Strateji 2: sayfadaki tüm tabloları tara, "gram" + fiyat içereni bul
+    try:
+        rows = driver.find_elements(By.CSS_SELECTOR, "tr")
+        for row in rows:
+            text = row.text.lower()
+            if "gram" in text and "altın" in text:
+                cells = row.find_elements(By.CSS_SELECTOR, "td")
+                nums = []
+                for cell in cells:
+                    try:
+                        v = parse_tr_number(cell.text)
+                        if GOLD_MIN <= v <= GOLD_MAX:
+                            nums.append(v)
+                    except Exception:
+                        pass
+                if len(nums) >= 2:
+                    log(f"  ✅ Selenium Altın (tablo): alış={nums[0]} satış={nums[1]}")
+                    return {"alis": nums[0], "satis": nums[1]}
+    except Exception as e:
+        log(f"  ⚠  Selenium tablo tarama: {e}")
+
+    # Strateji 3: sayfanın tüm metninden fiyat büyüklüğünde sayıları topla
+    try:
+        page_text = driver.find_element(By.TAG_NAME, "body").text
+        numbers = []
+        for m in re.finditer(r'\b[5-9]\.\d{3}[,.]?\d{0,2}\b|\b[1][0-9]\.\d{3}[,.]?\d{0,2}\b', page_text):
+            try:
+                numbers.append(parse_tr_number(m.group()))
+            except Exception:
+                pass
+        numbers = sorted(set(numbers))
+        if len(numbers) >= 2:
+            # En küçük = alış, bir büyüğü = satış (alış < satış)
+            pairs = [(a, b) for a in numbers for b in numbers
+                     if b > a and 0 < (b - a) / a < 0.20]
+            if pairs:
+                alis, satis = pairs[0]
+                log(f"  ✅ Selenium Altın (metin): alış={alis} satış={satis}")
+                return {"alis": alis, "satis": satis}
+    except Exception as e:
+        log(f"  ⚠  Selenium metin tarama: {e}")
+
+    # Strateji 4: HTML kaynağından regex
+    try:
+        html = driver.page_source
+        # JSON içinde gömülü veri ara
+        matches = re.findall(
+            r'"(?:buying|alis|buy)"[:\s]*"?([5-9]\d{3}(?:[,.]\d{1,2})?)"?'
+            r'.*?"(?:selling|satis|sell)"[:\s]*"?([5-9]\d{3}(?:[,.]\d{1,2})?)"?',
+            html, re.I | re.S
+        )
+        if matches:
+            alis  = parse_tr_number(matches[0][0])
+            satis = parse_tr_number(matches[0][1])
+            validate(alis,  GOLD_MIN, GOLD_MAX, "Selenium Altın alış (HTML)")
+            validate(satis, GOLD_MIN, GOLD_MAX, "Selenium Altın satış (HTML)")
+            log(f"  ✅ Selenium Altın (HTML regex): alış={alis} satış={satis}")
+            return {"alis": alis, "satis": satis}
+    except Exception as e:
+        log(f"  ⚠  Selenium HTML regex: {e}")
+
+    raise RuntimeError("Selenium: İş Bankası altın fiyatı bulunamadı")
+
+
+# ── SELENIUM: İŞ BANKASI GBP ─────────────────────────────────────────────────
+
+def selenium_isbank_gbp(driver):
+    """İş Bankası döviz kurları sayfasından Selenium ile GBP alış/satış çek."""
+    url = "https://www.isbank.com.tr/doviz-kurlari"
+    log(f"  🌐 Selenium: {url}")
+    driver.get(url)
+    time.sleep(5)
+
+    # Strateji 1: tablo satırlarını tara, GBP içereni bul
+    try:
+        rows = driver.find_elements(By.CSS_SELECTOR, "tr")
+        for row in rows:
+            text = row.text
+            if re.search(r'\bGBP\b|\bsterlin\b|\bİngiliz\b', text, re.I):
+                cells = row.find_elements(By.CSS_SELECTOR, "td")
+                nums = []
+                for cell in cells:
+                    try:
+                        v = parse_tr_number(cell.text)
+                        if GBP_MIN <= v <= GBP_MAX:
+                            nums.append(v)
+                    except Exception:
+                        pass
+                if len(nums) >= 2:
+                    log(f"  ✅ Selenium GBP (tablo): alış={nums[0]} satış={nums[1]}")
+                    return {"alis": nums[0], "satis": nums[1]}
+    except Exception as e:
+        log(f"  ⚠  Selenium GBP tablo: {e}")
+
+    # Strateji 2: metin tarama
+    try:
+        page_text = driver.find_element(By.TAG_NAME, "body").text
+        # GBP satırını bul
+        for line in page_text.splitlines():
+            if re.search(r'\bGBP\b|\bsterlin\b', line, re.I):
+                nums = []
+                for m in re.finditer(r'\b\d{2,3}[,.]\d{4}\b', line):
+                    try:
+                        v = parse_tr_number(m.group())
+                        if GBP_MIN <= v <= GBP_MAX:
+                            nums.append(v)
+                    except Exception:
+                        pass
+                if len(nums) >= 2:
+                    log(f"  ✅ Selenium GBP (metin): alış={nums[0]} satış={nums[1]}")
+                    return {"alis": nums[0], "satis": nums[1]}
+    except Exception as e:
+        log(f"  ⚠  Selenium GBP metin: {e}")
+
+    raise RuntimeError("Selenium: İş Bankası GBP kuru bulunamadı")
+
 
 # ── TCMB XML ─────────────────────────────────────────────────────────────────
 
 def fetch_tcmb():
-    """TCMB'den GBP ve gram altın verisi çek."""
     url = "https://www.tcmb.gov.tr/kurlar/today.xml"
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
     with urllib.request.urlopen(req, timeout=15) as resp:
         content = resp.read()
     root = ET.fromstring(content)
-
     result = {}
 
     for cur in root.findall("Currency"):
         code = cur.get("CurrencyCode", "")
 
-        # GBP
         if code == "GBP":
             alis  = float(cur.findtext("ForexBuying")  or cur.findtext("BanknoteBuying")  or 0)
             satis = float(cur.findtext("ForexSelling") or cur.findtext("BanknoteSelling") or 0)
-            validate(alis,  GBP_MIN,  GBP_MAX,  "TCMB GBP alış")
-            validate(satis, GBP_MIN,  GBP_MAX,  "TCMB GBP satış")
+            validate(alis,  GBP_MIN, GBP_MAX, "TCMB GBP alış")
+            validate(satis, GBP_MIN, GBP_MAX, "TCMB GBP satış")
             result["gbp"] = {"alis": round(alis, 4), "satis": round(satis, 4)}
 
-        # XAU — TCMB gram altın olarak yayınlar (birim: 1 gram = TRY)
         if code == "XAU":
             alis  = float(cur.findtext("ForexBuying")  or cur.findtext("BanknoteBuying")  or 0)
             satis = float(cur.findtext("ForexSelling") or cur.findtext("BanknoteSelling") or 0)
-            # TCMB ons bazında yayınlıyorsa gram'a çevir (1 ons = 31.1035 gram)
-            # Değer 3000+ ise gram, 100.000+ ise ons demektir
-            if alis > 50000:
+            if alis > 50000:  # ons ise gram'a çevir
                 alis  = round(alis  / 31.1035, 4)
                 satis = round(satis / 31.1035, 4)
             validate(alis,  GOLD_MIN, GOLD_MAX, "TCMB Altın alış")
             validate(satis, GOLD_MIN, GOLD_MAX, "TCMB Altın satış")
             result["gold"] = {"alis": round(alis, 2), "satis": round(satis, 2)}
 
-    # XAU yoksa USD üzerinden hesapla (fallback)
-    if "gold" not in result:
-        usd_alis = usd_satis = None
-        for cur in root.findall("Currency"):
-            if cur.get("CurrencyCode") == "USD":
-                usd_alis  = float(cur.findtext("ForexBuying")  or 0)
-                usd_satis = float(cur.findtext("ForexSelling") or 0)
-                break
-        if usd_alis:
-            result["_usd"] = {"alis": usd_alis, "satis": usd_satis}
-            log("  ℹ  TCMB: XAU bulunamadı, USD kaydedildi (gram altın için kullanılabilir)")
-
     return result
 
 
-# ── CLAUDE WEB ARAMASI ───────────────────────────────────────────────────────
+# ── CLAUDE WEB ARAMASI (fallback) ────────────────────────────────────────────
 
 def claude_search(prompt):
     payload = json.dumps({
@@ -149,69 +345,94 @@ def extract_json(text):
         raise ValueError(f"JSON bulunamadı: {text[:300]}")
     return json.loads(m.group())
 
-
-# ── İŞ BANKASI WEB (CLAUDE SEARCH) ──────────────────────────────────────────
-
 def fetch_isbank_gold_web():
-    """Claude web search ile İş Bankası resmi gram altın bayi kuru."""
     prompt = (
         f"Bugün {TODAY} tarihinde İş Bankası resmi sitesinde (isbank.com.tr) "
         "yayınlanan gram altın BAYİ ALIŞ ve BAYİ SATIŞ fiyatı nedir? "
         "Önce https://www.isbank.com.tr/altin-fiyatlari sayfasını kontrol et. "
-        "Bu sayfada bulamazsan https://www.isbank.com.tr/doviz-kurlari adresine bak. "
-        "Sonucu yalnızca aşağıdaki JSON formatında döndür, başka hiçbir metin ekleme: "
-        '{"alis": <sayi>, "satis": <sayi>, "tarih": "<YYYY-MM-DD>"} '
-        "Ondalık ayraç olarak nokta kullan. Virgül kullanma."
+        "Sonucu YALNIZCA şu JSON formatında döndür, başka metin ekleme: "
+        '{"alis": <sayi>, "satis": <sayi>} '
+        "Ondalık için nokta kullan."
     )
-    raw = claude_search(prompt)
-    d = extract_json(raw)
+    d = extract_json(claude_search(prompt))
     return {
-        "alis":  validate(float(d["alis"]),  GOLD_MIN, GOLD_MAX, "İşBankası Altın alış"),
-        "satis": validate(float(d["satis"]), GOLD_MIN, GOLD_MAX, "İşBankası Altın satış"),
+        "alis":  validate(float(d["alis"]),  GOLD_MIN, GOLD_MAX, "Claude Altın alış"),
+        "satis": validate(float(d["satis"]), GOLD_MIN, GOLD_MAX, "Claude Altın satış"),
     }
 
 def fetch_isbank_gbp_web():
-    """Claude web search ile İş Bankası GBP bayi kuru."""
     prompt = (
         f"Bugün {TODAY} tarihinde İş Bankası resmi sitesinde (isbank.com.tr) "
         "yayınlanan İngiliz Sterlini (GBP) BAYİ ALIŞ ve BAYİ SATIŞ kuru nedir? "
         "Önce https://www.isbank.com.tr/doviz-kurlari sayfasını kontrol et. "
-        "Sonucu yalnızca aşağıdaki JSON formatında döndür, başka hiçbir metin ekleme: "
-        '{"alis": <sayi>, "satis": <sayi>, "tarih": "<YYYY-MM-DD>"} '
-        "Ondalık ayraç olarak nokta kullan. Virgül kullanma."
+        "Sonucu YALNIZCA şu JSON formatında döndür, başka metin ekleme: "
+        '{"alis": <sayi>, "satis": <sayi>} '
+        "Ondalık için nokta kullan."
     )
-    raw = claude_search(prompt)
-    d = extract_json(raw)
+    d = extract_json(claude_search(prompt))
     return {
-        "alis":  validate(float(d["alis"]),  GBP_MIN, GBP_MAX, "İşBankası GBP alış"),
-        "satis": validate(float(d["satis"]), GBP_MIN, GBP_MAX, "İşBankası GBP satış"),
+        "alis":  validate(float(d["alis"]),  GBP_MIN, GBP_MAX, "Claude GBP alış"),
+        "satis": validate(float(d["satis"]), GBP_MIN, GBP_MAX, "Claude GBP satış"),
     }
 
 
-# ── ALTIN ─────────────────────────────────────────────────────────────────────
+# ── İŞ BANKASI VERİSİ AL (Selenium → Claude fallback) ───────────────────────
 
-def run_gold(tcmb_data):
+def get_isbank_gold(driver):
+    if driver:
+        try:
+            result = selenium_isbank_gold(driver)
+            validate(result["alis"],  GOLD_MIN, GOLD_MAX, "Selenium Altın alış")
+            validate(result["satis"], GOLD_MIN, GOLD_MAX, "Selenium Altın satış")
+            result["kaynak_detay"] = "Selenium"
+            return result
+        except Exception as e:
+            log(f"  ⚠  Selenium Altın başarısız, Claude'a geçiliyor: {e}")
+    try:
+        result = fetch_isbank_gold_web()
+        result["kaynak_detay"] = "Claude web search"
+        log(f"  ✅ Claude Altın: alış={result['alis']} satış={result['satis']}")
+        return result
+    except Exception as e:
+        log(f"  ❌ Claude Altın de başarısız: {e}")
+        return None
+
+def get_isbank_gbp(driver):
+    if driver:
+        try:
+            result = selenium_isbank_gbp(driver)
+            validate(result["alis"],  GBP_MIN, GBP_MAX, "Selenium GBP alış")
+            validate(result["satis"], GBP_MIN, GBP_MAX, "Selenium GBP satış")
+            result["kaynak_detay"] = "Selenium"
+            return result
+        except Exception as e:
+            log(f"  ⚠  Selenium GBP başarısız, Claude'a geçiliyor: {e}")
+    try:
+        result = fetch_isbank_gbp_web()
+        result["kaynak_detay"] = "Claude web search"
+        log(f"  ✅ Claude GBP: alış={result['alis']} satış={result['satis']}")
+        return result
+    except Exception as e:
+        log(f"  ❌ Claude GBP de başarısız: {e}")
+        return None
+
+
+# ── ALTIN KAYDET ──────────────────────────────────────────────────────────────
+
+def run_gold(tcmb_data, isbank_gold):
     records = load_json(GOLD_FILE)
     ref  = prev_val(records, "satis")
     prev = existing_entry(records, TODAY)
 
-    tcmb_gold  = tcmb_data.get("gold")   # {"alis": x, "satis": x} veya None
-    isbank_gold = None
-
-    # İş Bankası web (ikincil)
-    try:
-        isbank_gold = fetch_isbank_gold_web()
-        if ref and abs(isbank_gold["satis"] - ref) / ref > 0.08:
-            log(f"  ⚠  ALTIN İşBankası: satış {isbank_gold['satis']} öncekinden >%8 sapıyor (ref={ref:.2f})")
-        log(f"  ✅ ALTIN İşBankası: alış={isbank_gold['alis']} satış={isbank_gold['satis']}")
-    except Exception as e:
-        log(f"  ⚠  ALTIN İşBankası başarısız: {e}")
+    tcmb_gold = tcmb_data.get("gold")
 
     if tcmb_gold is None and isbank_gold is None:
         log("  ❌ ALTIN: Her iki kaynak başarısız, kayıt atlanıyor.")
         return
 
-    # Ana alis/satis: İşBankası varsa o, yoksa TCMB
+    if isbank_gold and ref and abs(isbank_gold["satis"] - ref) / ref > 0.08:
+        log(f"  ⚠  ALTIN: satış {isbank_gold['satis']} öncekinden >%8 sapıyor (ref={ref:.2f}), TCMB ile çapraz kontrol")
+
     primary = isbank_gold or tcmb_gold
     entry = {
         "date":  TODAY,
@@ -219,7 +440,6 @@ def run_gold(tcmb_data):
         "satis": primary["satis"],
     }
 
-    # İşBankası alanları
     if isbank_gold:
         entry["isbank_alis"]  = isbank_gold["alis"]
         entry["isbank_satis"] = isbank_gold["satis"]
@@ -229,60 +449,50 @@ def run_gold(tcmb_data):
         if entry["isbank_alis"]:
             entry["alis"]  = entry["isbank_alis"]
             entry["satis"] = entry["isbank_satis"]
-        log(f"  ℹ  ALTIN İşBankası: önceki değer korundu")
+        log("  ℹ  ALTIN İşBankası: önceki değer korundu")
     else:
         entry["isbank_alis"]  = None
         entry["isbank_satis"] = None
 
-    # TCMB alanları
     entry["tcmb_alis"]  = tcmb_gold["alis"]  if tcmb_gold else (prev.get("tcmb_alis")  if prev else None)
     entry["tcmb_satis"] = tcmb_gold["satis"] if tcmb_gold else (prev.get("tcmb_satis") if prev else None)
 
-    # Fark
     if entry.get("isbank_satis") and entry.get("tcmb_satis"):
         entry["fark_satis"] = round(entry["isbank_satis"] - entry["tcmb_satis"], 2)
         entry["fark_alis"]  = round((entry["isbank_alis"] or 0) - (entry["tcmb_alis"] or 0), 2)
-        log(f"  📊 ALTIN Fark (İşBankası−TCMB): satış=+{entry['fark_satis']} alış=+{entry['fark_alis']}")
+        log(f"  📊 ALTIN Fark: satış=+{entry['fark_satis']} alış=+{entry['fark_alis']}")
 
-    # Kaynak belirle
+    detay = isbank_gold.get("kaynak_detay", "") if isbank_gold else ""
     if isbank_gold and tcmb_gold:
-        entry["kaynak"] = "İşBankası+TCMB"
+        entry["kaynak"] = f"İşBankası+TCMB ({detay})"
     elif isbank_gold:
-        entry["kaynak"] = "İşBankası (TCMB yok)"
+        entry["kaynak"] = f"İşBankası ({detay}, TCMB yok)"
     else:
         entry["kaynak"] = "TCMB (İşBankası başarısız)"
 
-    # Manuel revizyon koruma
     if prev and prev.get("kaynak", "").endswith("(manuel)"):
         entry["kaynak"] += " (manuel üzerine)"
 
     action = upsert(records, entry)
     save_json(GOLD_FILE, records)
-    log(f"  ✅ ALTIN {action}: alış={entry['alis']} satış={entry['satis']} [{entry['kaynak']}]")
+    log(f"  💾 ALTIN {action}: alış={entry['alis']} satış={entry['satis']} [{entry['kaynak']}]")
 
 
-# ── GBP ──────────────────────────────────────────────────────────────────────
+# ── GBP KAYDET ────────────────────────────────────────────────────────────────
 
-def run_gbp(tcmb_data):
+def run_gbp(tcmb_data, isbank_gbp):
     records = load_json(GBP_FILE)
     ref  = prev_val(records, "satis")
     prev = existing_entry(records, TODAY)
 
-    tcmb_gbp   = tcmb_data.get("gbp")
-    isbank_gbp = None
-
-    # İş Bankası web (ikincil)
-    try:
-        isbank_gbp = fetch_isbank_gbp_web()
-        if ref and abs(isbank_gbp["satis"] - ref) / ref > 0.08:
-            log(f"  ⚠  GBP İşBankası: satış {isbank_gbp['satis']} öncekinden >%8 sapıyor")
-        log(f"  ✅ GBP İşBankası: alış={isbank_gbp['alis']} satış={isbank_gbp['satis']}")
-    except Exception as e:
-        log(f"  ⚠  GBP İşBankası başarısız: {e}")
+    tcmb_gbp = tcmb_data.get("gbp")
 
     if tcmb_gbp is None and isbank_gbp is None:
         log("  ❌ GBP: Her iki kaynak başarısız, kayıt atlanıyor.")
         return
+
+    if isbank_gbp and ref and abs(isbank_gbp["satis"] - ref) / ref > 0.08:
+        log(f"  ⚠  GBP: satış {isbank_gbp['satis']} öncekinden >%8 sapıyor")
 
     primary = isbank_gbp or tcmb_gbp
     entry = {
@@ -300,8 +510,7 @@ def run_gbp(tcmb_data):
         if entry["isbank_alis"]:
             entry["alis"]  = entry["isbank_alis"]
             entry["satis"] = entry["isbank_satis"]
-        entry["kaynak"] = "TCMB (İşBankası önceki korundu)"
-        log(f"  ℹ  GBP İşBankası: önceki değer korundu")
+        log("  ℹ  GBP İşBankası: önceki değer korundu")
     else:
         entry["isbank_alis"]  = None
         entry["isbank_satis"] = None
@@ -312,18 +521,19 @@ def run_gbp(tcmb_data):
     if entry.get("isbank_satis") and entry.get("tcmb_satis"):
         entry["fark_satis"] = round(entry["isbank_satis"] - entry["tcmb_satis"], 4)
         entry["fark_alis"]  = round((entry["isbank_alis"] or 0) - (entry["tcmb_alis"] or 0), 4)
-        log(f"  📊 GBP Fark (İşBankası−TCMB): satış=+{entry['fark_satis']:.4f} alış=+{entry['fark_alis']:.4f}")
+        log(f"  📊 GBP Fark: satış=+{entry['fark_satis']:.4f} alış=+{entry['fark_alis']:.4f}")
 
+    detay = isbank_gbp.get("kaynak_detay", "") if isbank_gbp else ""
     if isbank_gbp and tcmb_gbp:
-        entry["kaynak"] = "İşBankası+TCMB"
+        entry["kaynak"] = f"İşBankası+TCMB ({detay})"
     elif isbank_gbp:
-        entry["kaynak"] = "İşBankası (TCMB yok)"
+        entry["kaynak"] = f"İşBankası ({detay}, TCMB yok)"
     else:
         entry["kaynak"] = "TCMB (İşBankası başarısız)"
 
     action = upsert(records, entry)
     save_json(GBP_FILE, records)
-    log(f"  💾 GBP {action}")
+    log(f"  💾 GBP {action}: alış={entry['alis']} satış={entry['satis']} [{entry['kaynak']}]")
 
 
 # ── ANA ───────────────────────────────────────────────────────────────────────
@@ -334,18 +544,35 @@ def main():
         sys.exit(1)
 
     log(f"=== Fiyat çekme başlıyor — {TODAY} ===")
+    log(f"  Selenium: {'✅ kurulu' if SELENIUM_OK else '❌ kurulu değil (Claude fallback kullanılacak)'}")
 
-    # TCMB'yi bir kez çek, her ikisi için kullan
+    # TCMB — her zaman çek
     tcmb_data = {}
     try:
         tcmb_data = fetch_tcmb()
-        gold_ok = "tcmb_alis" in str(tcmb_data.get("gold", ""))
         log(f"  ✅ TCMB XML: GBP={'gbp' in tcmb_data} Altın={'gold' in tcmb_data}")
     except Exception as e:
         log(f"  ❌ TCMB HATA: {e}")
 
-    run_gold(tcmb_data)
-    run_gbp(tcmb_data)
+    # Selenium driver — tek seferinde aç, her iki sayfa için kullan
+    driver = None
+    if SELENIUM_OK:
+        try:
+            driver = make_driver()
+            log("  ✅ Chrome driver başlatıldı")
+        except Exception as e:
+            log(f"  ⚠  Chrome driver başlatılamadı: {e} — Claude fallback'e geçiliyor")
+
+    try:
+        isbank_gold = get_isbank_gold(driver)
+        isbank_gbp  = get_isbank_gbp(driver)
+    finally:
+        if driver:
+            driver.quit()
+            log("  🔒 Chrome driver kapatıldı")
+
+    run_gold(tcmb_data, isbank_gold)
+    run_gbp(tcmb_data, isbank_gbp)
 
     log("=== Tamamlandı ===")
 
