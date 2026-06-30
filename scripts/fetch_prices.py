@@ -146,6 +146,11 @@ def selenium_isbank_gold(driver):
 
     # Sayfanın yüklenmesini bekle — fiyat içeren bir sayısal element gelene dek
     wait = WebDriverWait(driver, 20)
+    try:
+        wait.until(lambda d: d.execute_script("return document.readyState") == "complete")
+    except Exception:
+        pass
+    time.sleep(8)  # JS render + olası lazy-load için ek bekleme
 
     # Strateji 1: data-* attribute ile (en güvenilir)
     selectors_alis = [
@@ -163,10 +168,7 @@ def selenium_isbank_gold(driver):
         "tr:contains('Gram Altın') td:nth-child(3)",
     ]
 
-    # Önce kısa bekle — JS yüklensin
-    time.sleep(5)
-
-    # Strateji 2: sayfadaki tüm tabloları tara, "gram" + fiyat içereni bul
+    # Strateji 2: sayfadaki tüm tabloları tara, "gram" + "altın" içereni bul
     try:
         rows = driver.find_elements(By.CSS_SELECTOR, "tr")
         for row in rows:
@@ -186,6 +188,30 @@ def selenium_isbank_gold(driver):
                     return {"alis": nums[0], "satis": nums[1]}
     except Exception as e:
         log(f"  ⚠  Selenium tablo tarama: {e}")
+
+    # Strateji 2b: sadece "altın" geçen herhangi bir satır/kart (tr, li, div) — daha geniş
+    try:
+        candidates = driver.find_elements(By.CSS_SELECTOR, "tr, li, div")
+        for el in candidates:
+            try:
+                text = el.text.lower()
+            except Exception:
+                continue
+            if "altın" in text and "gram" in text and len(text) < 300:
+                nums = []
+                for m in re.finditer(r'\b[5-9]\.\d{3}[,.]?\d{0,2}\b|\b1[0-9]\.\d{3}[,.]?\d{0,2}\b', el.text):
+                    try:
+                        v = parse_tr_number(m.group())
+                        if GOLD_MIN <= v <= GOLD_MAX:
+                            nums.append(v)
+                    except Exception:
+                        pass
+                nums = sorted(set(nums))
+                if len(nums) >= 2 and (nums[1] - nums[0]) / nums[0] < 0.20:
+                    log(f"  ✅ Selenium Altın (kart/div): alış={nums[0]} satış={nums[1]}")
+                    return {"alis": nums[0], "satis": nums[1]}
+    except Exception as e:
+        log(f"  ⚠  Selenium kart/div tarama: {e}")
 
     # Strateji 3: sayfanın tüm metninden fiyat büyüklüğünde sayıları topla
     try:
@@ -226,6 +252,17 @@ def selenium_isbank_gold(driver):
             return {"alis": alis, "satis": satis}
     except Exception as e:
         log(f"  ⚠  Selenium HTML regex: {e}")
+
+    # Hiçbiri tutmadıysa debug dump kaydet (Actions artifact için)
+    try:
+        os.makedirs("debug", exist_ok=True)
+        with open("debug/altin_sayfa_metni.txt", "w", encoding="utf-8") as f:
+            f.write(driver.find_element(By.TAG_NAME, "body").text)
+        with open("debug/altin_sayfa_html.html", "w", encoding="utf-8") as f:
+            f.write(driver.page_source)
+        log("  🐛 Debug dump kaydedildi: debug/altin_sayfa_metni.txt, debug/altin_sayfa_html.html")
+    except Exception as e:
+        log(f"  ⚠  Debug dump kaydedilemedi: {e}")
 
     raise RuntimeError("Selenium: İş Bankası altın fiyatı bulunamadı")
 
@@ -550,7 +587,9 @@ def main():
     tcmb_data = {}
     try:
         tcmb_data = fetch_tcmb()
-        log(f"  ✅ TCMB XML: GBP={'gbp' in tcmb_data} Altın={'gold' in tcmb_data}")
+        log(f"  ✅ TCMB XML: GBP={'gbp' in tcmb_data}")
+        if "gold" not in tcmb_data:
+            log("  ℹ  TCMB XML'de altın (XAU) kodu yok — bu normal, TCMB günlük altın kuru yayınlamıyor olabilir. İşBankası/Selenium ana kaynak.")
     except Exception as e:
         log(f"  ❌ TCMB HATA: {e}")
 
