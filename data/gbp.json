@@ -1056,12 +1056,12 @@
   {
     "date": "2026-06-30",
     "alis": 60.0927,
-    "satis": 63.4238,
+    "satis": 63.4286,
     "isbank_alis": 60.0927,
-    "isbank_satis": 63.4238,
+    "isbank_satis": 63.4286,
     "tcmb_alis": 61.4404,
     "tcmb_satis": 61.7607,
-    "fark_satis": 1.6631,
+    "fark_satis": 1.6679,
     "fark_alis": -1.3477,
     "kaynak": "İşBankası+TCMB (Selenium)"
   }
