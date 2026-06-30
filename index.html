@@ -862,7 +862,7 @@ function checkStale(lastDate) {
     `Aşağıdaki token ile son bilinen fiyatı bu günlere kopyalayabilirsiniz.`;
 
   // Token daha önce girilmişse doldur
-  const saved = sessionStorage.getItem('gh_token');
+  const saved = localStorage.getItem('gh_token');
   if (saved) document.getElementById('staleToken').value = saved;
 }
 
@@ -882,7 +882,7 @@ function getMissingWorkdays(fromDate, toDate) {
 }
 
 function syncStaleToken(v) {
-  if (v) sessionStorage.setItem('gh_token', v);
+  if (v) localStorage.setItem('gh_token', v);
   // Modal token'ı da senkronize et
   const mTok = document.getElementById('mToken');
   if (mTok) mTok.value = v;
@@ -895,7 +895,7 @@ async function backfillMissing() {
     document.getElementById('staleResult').style.color = 'var(--red)';
     return;
   }
-  sessionStorage.setItem('gh_token', token);
+  localStorage.setItem('gh_token', token);
 
   const btn = document.getElementById('staleBtn');
   const lbl = document.getElementById('staleBtnLbl');
@@ -984,7 +984,7 @@ let _modalDate = today; // hangi tarihin düzeltileceği
 
 function openModal() {
   // Token varsa geri doldur
-  const t = sessionStorage.getItem('gh_token');
+  const t = localStorage.getItem('gh_token');
   if (t) document.getElementById('mToken').value = t;
 
   // Tarih input'unu ayarla — varsayılan: bugün
@@ -1044,8 +1044,8 @@ function overlayClick(e) {
   if (e.target === document.getElementById('modalOverlay')) closeModal();
 }
 
-function saveToken(v) { if (v) sessionStorage.setItem('gh_token', v); }
-function clearToken()  { sessionStorage.removeItem('gh_token'); document.getElementById('mToken').value = ''; }
+function saveToken(v) { if (v) localStorage.setItem('gh_token', v); }
+function clearToken()  { localStorage.removeItem('gh_token'); document.getElementById('mToken').value = ''; }
 
 // diff hint
 const _origVals = {
