@@ -622,7 +622,8 @@ const fmt  = n => n == null ? '—' : Math.round(n).toLocaleString('tr-TR');
 const fmtD = n => n == null ? '—' : n.toLocaleString('tr-TR', {minimumFractionDigits:2, maximumFractionDigits:4});
 const dd   = s => { const [y,m,d] = s.split('-'); return `${d}.${m}.${y}`; };
 const sign = n => n >= 0 ? '+' : '';
-const today = new Date().toISOString().slice(0, 10);
+// Türkiye saatiyle bugünün tarihi (UTC+3)
+const today = new Date(Date.now() + 3 * 3600 * 1000).toISOString().slice(0, 10);
 
 // ── CHART HELPERS ─────────────────────────────────────────
 let goldChart, gbpChart;
@@ -800,7 +801,8 @@ function renderGbp(data) {
 let _goldData, _gbpData;
 async function boot() {
   try {
-    const [gr, br] = await Promise.all([fetch('data/gold.json'), fetch('data/gbp.json')]);
+    const _cb = `?t=${Date.now()}`;
+    const [gr, br] = await Promise.all([fetch('data/gold.json'+_cb), fetch('data/gbp.json'+_cb)]);
     _goldData = await gr.json();
     _gbpData  = await br.json();
     renderGold(_goldData);
@@ -822,7 +824,7 @@ boot();
 // ── STALE DATA DETECTION ─────────────────────────────────
 function checkStale(lastDate) {
   const now = new Date();
-  const todayStr = now.toISOString().slice(0,10);
+  const todayStr = new Date(Date.now() + 3 * 3600 * 1000).toISOString().slice(0,10);
   const lastMs = new Date(lastDate).getTime();
   const todayMs = new Date(todayStr).getTime();
   const diffDays = Math.round((todayMs - lastMs) / 86400000);
@@ -888,7 +890,7 @@ async function backfillMissing() {
   res.style.color = 'var(--muted)';
 
   try {
-    const todayStr = new Date().toISOString().slice(0,10);
+    const todayStr = new Date(Date.now() + 3 * 3600 * 1000).toISOString().slice(0,10);
     let addedCount = 0;
 
     // ALTIN backfill
@@ -1140,6 +1142,14 @@ async function modalSave() {
 
     if (goldChanged) renderGold(_goldData);
     if (gbpChanged)  renderGbp(_gbpData);
+
+    // lastUpdate ve statusMsg'i de güncelle
+    const newLastGold = _goldData[_goldData.length-1].date;
+    const newLastGbp  = _gbpData[_gbpData.length-1].date;
+    const newLastDate = newLastGold > newLastGbp ? newLastGold : newLastGbp;
+    document.getElementById('lastUpdate').textContent = dd(newLastDate);
+    document.getElementById('statusMsg').textContent  = `Manuel güncellendi — son kayıt: ${dd(newLastDate)}`;
+
     setBusy(false);
     showModalOk(`Kaydedildi! (${dd(targetDate)}) Grafik ve metrikler güncellendi.`);
   } catch(e) {
