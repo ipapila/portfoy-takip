@@ -1076,5 +1076,17 @@
     "fark_satis": 1.732,
     "fark_alis": -1.295,
     "kaynak": "İşBankası+TCMB (manuel)"
+  },
+  {
+    "date": "2026-07-02",
+    "alis": 60.7024,
+    "satis": 64.0614,
+    "isbank_alis": 60.7024,
+    "isbank_satis": 64.0614,
+    "tcmb_alis": 62.0259,
+    "tcmb_satis": 62.3493,
+    "fark_satis": 1.7121,
+    "fark_alis": -1.3235,
+    "kaynak": "İşBankası+TCMB (Selenium)"
   }
 ]
