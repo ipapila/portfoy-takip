@@ -135,31 +135,23 @@ def make_driver():
 
 # ── SELENIUM: İŞ BANKASI ALTIN ───────────────────────────────────────────────
 
-def selenium_isbank_gold(driver):
-    """
-    İş Bankası'nın kendi sitesinde artık herkese açık canlı gram altın fiyat
-    sayfası bulunmuyor (/altin-fiyatlari 404, /altin sadece ürün tanıtımı).
-    Bu yüzden İş Bankası'na özel, bankalardan veri toplayan güvenilir bir
-    aracı siteden (anlikaltinfiyatlari.com) İş Bankası gram altın bayi
-    alış/satış kurunu Selenium ile çekiyoruz.
-    """
-    url = "https://anlikaltinfiyatlari.com/banka/is-bankasi"
-    log(f"  🌐 Selenium: {url}")
-    driver.get(url)
-
-    wait = WebDriverWait(driver, 20)
+def _selenium_gold_from_page(driver, url, label):
+    """Verilen URL'den gram altın alış/satış çekmeyi dener. Başarısızsa None döner."""
+    log(f"  🌐 Selenium ({label}): {url}")
     try:
-        wait.until(lambda d: d.execute_script("return document.readyState") == "complete")
-    except Exception:
-        pass
-    time.sleep(6)
+        driver.get(url)
+        wait = WebDriverWait(driver, 20)
+        try:
+            wait.until(lambda d: d.execute_script("return document.readyState") == "complete")
+        except Exception:
+            pass
+        time.sleep(5)
 
-    # Strateji 1: "gram altın" geçen tablo satırını bul
-    try:
+        # Strateji A: tablo satırı — "gram" + "altın"
         rows = driver.find_elements(By.CSS_SELECTOR, "tr")
         for row in rows:
             text = row.text.lower()
-            if "gram" in text and "altın" in text:
+            if "gram" in text and ("altın" in text or "altin" in text):
                 cells = row.find_elements(By.CSS_SELECTOR, "td")
                 nums = []
                 for cell in cells:
@@ -170,20 +162,17 @@ def selenium_isbank_gold(driver):
                     except Exception:
                         pass
                 if len(nums) >= 2:
-                    log(f"  ✅ Selenium Altın (tablo): alış={nums[0]} satış={nums[1]}")
+                    log(f"  ✅ Selenium Altın (tablo/{label}): alış={nums[0]} satış={nums[1]}")
                     return {"alis": nums[0], "satis": nums[1]}
-    except Exception as e:
-        log(f"  ⚠  Selenium tablo tarama: {e}")
 
-    # Strateji 2: sayfa genelinde "alış" / "satış" etiketli kart/div yapıları
-    try:
+        # Strateji B: sayfa genelinde alış/satış kartları
         candidates = driver.find_elements(By.CSS_SELECTOR, "div, li, tr, span")
         for el in candidates:
             try:
                 text = el.text.lower()
             except Exception:
                 continue
-            if "alış" in text and "satış" in text and len(text) < 200:
+            if ("alış" in text or "alis" in text) and ("satış" in text or "satis" in text) and len(text) < 300:
                 nums = []
                 for m in re.finditer(r'\b[5-9]\.\d{3}[,.]?\d{0,2}\b|\b1[0-9]\.\d{3}[,.]?\d{0,2}\b', el.text):
                     try:
@@ -194,13 +183,10 @@ def selenium_isbank_gold(driver):
                         pass
                 nums = sorted(set(nums))
                 if len(nums) >= 2 and (nums[1] - nums[0]) / nums[0] < 0.25:
-                    log(f"  ✅ Selenium Altın (alış/satış kartı): alış={nums[0]} satış={nums[1]}")
+                    log(f"  ✅ Selenium Altın (kart/{label}): alış={nums[0]} satış={nums[1]}")
                     return {"alis": nums[0], "satis": nums[1]}
-    except Exception as e:
-        log(f"  ⚠  Selenium kart tarama: {e}")
 
-    # Strateji 3: sayfanın tüm metninden fiyat büyüklüğünde sayı çiftleri
-    try:
+        # Strateji C: sayfanın tüm metni
         page_text = driver.find_element(By.TAG_NAME, "body").text
         numbers = []
         for m in re.finditer(r'\b[5-9]\.\d{3}[,.]?\d{0,2}\b|\b[1][0-9]\.\d{3}[,.]?\d{0,2}\b', page_text):
@@ -214,42 +200,32 @@ def selenium_isbank_gold(driver):
                      if b > a and 0 < (b - a) / a < 0.20]
             if pairs:
                 alis, satis = pairs[0]
-                log(f"  ✅ Selenium Altın (metin): alış={alis} satış={satis}")
+                log(f"  ✅ Selenium Altın (metin/{label}): alış={alis} satış={satis}")
                 return {"alis": alis, "satis": satis}
-    except Exception as e:
-        log(f"  ⚠  Selenium metin tarama: {e}")
 
-    # Strateji 4: HTML kaynağından regex
-    try:
-        html = driver.page_source
-        # JSON içinde gömülü veri ara
-        matches = re.findall(
-            r'"(?:buying|alis|buy)"[:\s]*"?([5-9]\d{3}(?:[,.]\d{1,2})?)"?'
-            r'.*?"(?:selling|satis|sell)"[:\s]*"?([5-9]\d{3}(?:[,.]\d{1,2})?)"?',
-            html, re.I | re.S
-        )
-        if matches:
-            alis  = parse_tr_number(matches[0][0])
-            satis = parse_tr_number(matches[0][1])
-            validate(alis,  GOLD_MIN, GOLD_MAX, "Selenium Altın alış (HTML)")
-            validate(satis, GOLD_MIN, GOLD_MAX, "Selenium Altın satış (HTML)")
-            log(f"  ✅ Selenium Altın (HTML regex): alış={alis} satış={satis}")
-            return {"alis": alis, "satis": satis}
     except Exception as e:
-        log(f"  ⚠  Selenium HTML regex: {e}")
+        log(f"  ⚠  Selenium ({label}) hata: {e}")
+    return None
 
-    # Hiçbiri tutmadıysa debug dump kaydet (Actions artifact için)
-    try:
-        os.makedirs("debug", exist_ok=True)
-        with open("debug/altin_sayfa_metni.txt", "w", encoding="utf-8") as f:
-            f.write(driver.find_element(By.TAG_NAME, "body").text)
-        with open("debug/altin_sayfa_html.html", "w", encoding="utf-8") as f:
-            f.write(driver.page_source)
-        log("  🐛 Debug dump kaydedildi: debug/altin_sayfa_metni.txt, debug/altin_sayfa_html.html")
-    except Exception as e:
-        log(f"  ⚠  Debug dump kaydedilemedi: {e}")
 
-    raise RuntimeError("Selenium: İş Bankası altın fiyatı bulunamadı")
+def selenium_isbank_gold(driver):
+    """
+    Birden fazla kaynağı sırayla dener:
+      1. anlikaltinfiyatlari.com/banka/is-bankasi
+      2. bigpara.hurriyet.com.tr/altin (gram altın tablosu)
+      3. altin.doviz.com (genel altın fiyatları)
+    """
+    SOURCES = [
+        ("https://anlikaltinfiyatlari.com/banka/is-bankasi", "anlikaltinfiyatlari"),
+        ("https://bigpara.hurriyet.com.tr/altin/", "bigpara"),
+        ("https://altin.doviz.com", "doviz.com"),
+    ]
+    for url, label in SOURCES:
+        result = _selenium_gold_from_page(driver, url, label)
+        if result:
+            return result
+
+    raise RuntimeError("Selenium: İş Bankası altın fiyatı bulunamadı (3 kaynak denendi)")
 
 
 # ── SELENIUM: İŞ BANKASI GBP ─────────────────────────────────────────────────
@@ -368,17 +344,22 @@ def extract_json(text):
     return json.loads(m.group())
 
 def fetch_isbank_gold_web():
+    from datetime import datetime
+    # Türkiye saatinde bugün
+    tr_today = datetime.utcnow().replace(hour=datetime.utcnow().hour)
     prompt = (
-        f"Bugün {TODAY} tarihinde Türkiye İş Bankası'nın gram altın bayi "
-        "ALIŞ ve SATIŞ fiyatı nedir? İş Bankası'nın kendi sitesinde artık "
-        "herkese açık canlı fiyat sayfası bulunmuyor, bu yüzden şu kaynakları "
-        "sırayla kontrol et: "
+        f"Bugünün tarihi {TODAY} (Türkiye saatiyle). "
+        f"İş Bankası gram altın BAYİ ALIŞ ve SATIŞ fiyatını {TODAY} için bul. "
+        "Şu kaynakları web aramasıyla kontrol et (birden fazlasını dene): "
         "https://anlikaltinfiyatlari.com/banka/is-bankasi , "
-        "https://canlialtinfiyatlari.com/banka/is-bankasi.html , "
-        "https://altin.doviz.com/isbankasi/gram-altin . "
+        "https://bigpara.hurriyet.com.tr/altin/ , "
+        "https://altin.doviz.com , "
+        "https://canlialtinfiyatlari.com/banka/is-bankasi.html . "
+        f"ÖNEMLİ: Sadece {TODAY} tarihine ait GÜNCEL fiyatı döndür. "
+        "Eski tarihli veya önbelleğe alınmış veri döndürme. "
         "Sonucu YALNIZCA şu JSON formatında döndür, başka metin ekleme: "
         '{"alis": <sayi>, "satis": <sayi>} '
-        "Ondalık için nokta kullan."
+        "Ondalık için nokta kullan. Örnek: {\"alis\": 5800.5, \"satis\": 6550.0}"
     )
     d = extract_json(claude_search(prompt))
     return {
@@ -499,9 +480,21 @@ def run_gold(tcmb_data, isbank_gold):
     if prev and prev.get("kaynak", "").endswith("(manuel)"):
         entry["kaynak"] += " (manuel üzerine)"
 
+    # Stale detection: bugünkü değer dünkünün aynısıysa uyar
+    prev_records = [r for r in records if r["date"] < TODAY]
+    if prev_records:
+        prev_entry = prev_records[-1]
+        if (abs(entry["satis"] - (prev_entry.get("isbank_satis") or prev_entry.get("satis", 0))) < 0.01
+                and abs(entry["alis"] - (prev_entry.get("isbank_alis") or prev_entry.get("alis", 0))) < 0.01):
+            log(f"  ⚠  ALTIN UYARI: Bugünkü değer ({entry['satis']}) önceki kayıtla ({prev_entry['date']}: {prev_entry.get('isbank_satis') or prev_entry.get('satis')}) AYNI — bayat veri olabilir!")
+            entry["uyari"] = f"önceki kayıtla aynı ({prev_entry['date']})"
+        else:
+            entry.pop("uyari", None)
+
     action = upsert(records, entry)
     save_json(GOLD_FILE, records)
-    log(f"  💾 ALTIN {action}: alış={entry['alis']} satış={entry['satis']} [{entry['kaynak']}]")
+    uyari_str = f" ⚠ {entry['uyari']}" if entry.get("uyari") else ""
+    log(f"  💾 ALTIN {action}: alış={entry['alis']} satış={entry['satis']} [{entry['kaynak']}]{uyari_str}")
 
 
 # ── GBP KAYDET ────────────────────────────────────────────────────────────────
@@ -557,9 +550,21 @@ def run_gbp(tcmb_data, isbank_gbp):
     else:
         entry["kaynak"] = "TCMB (İşBankası başarısız)"
 
+    # Stale detection
+    prev_records = [r for r in records if r["date"] < TODAY]
+    if prev_records:
+        prev_entry = prev_records[-1]
+        if (abs(entry["satis"] - (prev_entry.get("isbank_satis") or prev_entry.get("satis", 0))) < 0.0001
+                and abs(entry["alis"] - (prev_entry.get("isbank_alis") or prev_entry.get("alis", 0))) < 0.0001):
+            log(f"  ⚠  GBP UYARI: Bugünkü değer önceki kayıtla ({prev_entry['date']}) AYNI — bayat veri olabilir!")
+            entry["uyari"] = f"önceki kayıtla aynı ({prev_entry['date']})"
+        else:
+            entry.pop("uyari", None)
+
     action = upsert(records, entry)
     save_json(GBP_FILE, records)
-    log(f"  💾 GBP {action}: alış={entry['alis']} satış={entry['satis']} [{entry['kaynak']}]")
+    uyari_str = f" ⚠ {entry['uyari']}" if entry.get("uyari") else ""
+    log(f"  💾 GBP {action}: alış={entry['alis']} satış={entry['satis']} [{entry['kaynak']}]{uyari_str}")
 
 
 # ── ANA ───────────────────────────────────────────────────────────────────────
