@@ -339,5 +339,15 @@
     "tcmb_alis": null,
     "tcmb_satis": null,
     "kaynak": "İşBankası (Claude web search, TCMB yok)"
+  },
+  {
+    "date": "2026-07-03",
+    "alis": 6286.96,
+    "satis": 6287.68,
+    "isbank_alis": 6286.96,
+    "isbank_satis": 6287.68,
+    "tcmb_alis": null,
+    "tcmb_satis": null,
+    "kaynak": "İşBankası (Selenium/anlikaltinfiyatlari, TCMB yok)"
   }
 ]
