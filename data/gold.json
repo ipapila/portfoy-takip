@@ -342,10 +342,10 @@
   },
   {
     "date": "2026-07-03",
-    "alis": 6286.96,
-    "satis": 6287.68,
-    "isbank_alis": 6286.96,
-    "isbank_satis": 6287.68,
+    "alis": 6265.44,
+    "satis": 6266.55,
+    "isbank_alis": 6265.44,
+    "isbank_satis": 6266.55,
     "tcmb_alis": null,
     "tcmb_satis": null,
     "kaynak": "İşBankası (Selenium/anlikaltinfiyatlari, TCMB yok)"
