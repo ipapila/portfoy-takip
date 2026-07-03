@@ -344,20 +344,20 @@ def extract_json(text):
     return json.loads(m.group())
 
 def fetch_isbank_gold_web():
-    from datetime import datetime
-    # Türkiye saatinde bugün
-    tr_today = datetime.utcnow().replace(hour=datetime.utcnow().hour)
+    import time as _time
+    ts = int(_time.time())  # önbellek kırıcı
     prompt = (
-        f"Bugünün tarihi {TODAY} (Türkiye saatiyle). "
-        f"İş Bankası gram altın BAYİ ALIŞ ve SATIŞ fiyatını {TODAY} için bul. "
-        "Şu kaynakları web aramasıyla kontrol et (birden fazlasını dene): "
-        "https://anlikaltinfiyatlari.com/banka/is-bankasi , "
-        "https://bigpara.hurriyet.com.tr/altin/ , "
-        "https://altin.doviz.com , "
-        "https://canlialtinfiyatlari.com/banka/is-bankasi.html . "
-        f"ÖNEMLİ: Sadece {TODAY} tarihine ait GÜNCEL fiyatı döndür. "
-        "Eski tarihli veya önbelleğe alınmış veri döndürme. "
-        "Sonucu YALNIZCA şu JSON formatında döndür, başka metin ekleme: "
+        f"Bugünün tarihi {TODAY} ve şu anki Unix timestamp: {ts}. "
+        f"Türkiye piyasasında BUGÜN ({TODAY}) geçerli gram altın fiyatını bul. "
+        "Önbellek kullanma; şu sayfaları CANLI olarak kontrol et: "
+        "1) https://bigpara.hurriyet.com.tr/altin/ "
+        "2) https://altin.doviz.com "
+        "3) https://www.altinkaynak.com/Altin/Kur/Gram "
+        "4) https://anlikaltinfiyatlari.com/banka/is-bankasi "
+        f"Sayfaların tepesinde {TODAY} tarihi yazıyor mu kontrol et. "
+        f"SADECE {TODAY} tarihli güncel veriyi döndür. "
+        "Önceki güne ait ya da 'son güncelleme: dün' gibi ifade içeren veri varsa o kaynağı atla. "
+        "Sonucu YALNIZCA şu JSON formatında döndür, başka hiçbir metin ekleme: "
         '{"alis": <sayi>, "satis": <sayi>} '
         "Ondalık için nokta kullan. Örnek: {\"alis\": 5800.5, \"satis\": 6550.0}"
     )
@@ -484,10 +484,18 @@ def run_gold(tcmb_data, isbank_gold):
     prev_records = [r for r in records if r["date"] < TODAY]
     if prev_records:
         prev_entry = prev_records[-1]
-        if (abs(entry["satis"] - (prev_entry.get("isbank_satis") or prev_entry.get("satis", 0))) < 0.01
-                and abs(entry["alis"] - (prev_entry.get("isbank_alis") or prev_entry.get("alis", 0))) < 0.01):
-            log(f"  ⚠  ALTIN UYARI: Bugünkü değer ({entry['satis']}) önceki kayıtla ({prev_entry['date']}: {prev_entry.get('isbank_satis') or prev_entry.get('satis')}) AYNI — bayat veri olabilir!")
-            entry["uyari"] = f"önceki kayıtla aynı ({prev_entry['date']})"
+        prev_satis = prev_entry.get("isbank_satis") or prev_entry.get("satis", 0)
+        prev_alis  = prev_entry.get("isbank_alis")  or prev_entry.get("alis",  0)
+        is_stale = (abs(entry["satis"] - prev_satis) < 0.01 and abs(entry["alis"] - prev_alis) < 0.01)
+
+        if is_stale:
+            from_claude = "Claude web search" in entry.get("kaynak", "")
+            if from_claude:
+                log(f"  ❌ ALTIN: Claude web search aynı değeri döndürdü ({entry['satis']}) — önceki kayıtla ({prev_entry['date']}) aynı. BAYAT VERİ, kaydedilmiyor.")
+                return  # ← bayat Claude verisi → kayıt atla
+            else:
+                log(f"  ⚠  ALTIN UYARI: Bugünkü değer ({entry['satis']}) önceki kayıtla ({prev_entry['date']}: {prev_satis}) AYNI (Selenium/TCMB kaynağı — yine de kaydediliyor)")
+                entry["uyari"] = f"önceki kayıtla aynı ({prev_entry['date']})"
         else:
             entry.pop("uyari", None)
 
