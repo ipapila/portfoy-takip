@@ -214,19 +214,21 @@ def _selenium_gold_from_page(driver, url, label):
 
 # NOT: anlikaltinfiyatlari sayfası bankaya özel (İşBankası) veri iddia ediyor.
 # bigpara ve doviz.com GENEL piyasa gram altın fiyatı gösterir — İşBankası'nın
-# kendi bayi kuru DEĞİLDİR. Sadece anlikaltinfiyatlari başarısız olursa,
-# yaklaşık bir referans olarak kullanılır ve kayıtta bu açıkça işaretlenir.
-BANKAYA_OZEL_KAYNAKLAR = {"anlikaltinfiyatlari"}
+# kendi bayi kuru DEĞİLDİR. Bunlar sadece anlikaltinfiyatlari'nin doğrudan HTTP
+# denemesi ve ASP tablo denemesi başarısız olursa son çare olarak kullanılır ve
+# kayıtta bu açıkça işaretlenir.
+BANKAYA_OZEL_KAYNAKLAR = set()  # Selenium listesinde artık bankaya özel kaynak yok
 
 def selenium_isbank_gold(driver):
     """
-    Birden fazla kaynağı sırayla dener:
-      1. anlikaltinfiyatlari.com/banka/is-bankasi (İşBankası'na özel — tercih edilen)
-      2. bigpara.hurriyet.com.tr/altin (GENEL piyasa, İşBankası'na özel DEĞİL)
-      3. altin.doviz.com (GENEL piyasa, İşBankası'na özel DEĞİL)
+    Son çare: bunlar GENEL piyasa kaynaklarıdır, İşBankası'na özel değil.
+    (anlikaltinfiyatlari artık Selenium'a değil, doğrudan HTTP'ye taşındı —
+    bkz. fetch_isbank_gold_anlikaltin — çünkü headless Chrome bot olarak
+    engelleniyordu.)
+      1. bigpara.hurriyet.com.tr/altin (GENEL piyasa, İşBankası'na özel DEĞİL)
+      2. altin.doviz.com (GENEL piyasa, İşBankası'na özel DEĞİL)
     """
     SOURCES = [
-        ("https://anlikaltinfiyatlari.com/banka/is-bankasi", "anlikaltinfiyatlari"),
         ("https://bigpara.hurriyet.com.tr/altin/", "bigpara"),
         ("https://altin.doviz.com", "doviz.com"),
     ]
@@ -436,6 +438,41 @@ def fetch_isbank_asp_altin():
     raise RuntimeError(f"ASP tablo: *KUR satırı ve {len(ALTIN_TRKD_ADAYLARI)} aday kod da altın vermedi")
 
 
+# ── ANLIKALTINFIYATLARI — DOĞRUDAN HTTP (Selenium'a gerek yok) ──────────────
+#
+#   Bu site JS render gerektirmiyor — düz urllib GET ile tam veri geliyor.
+#   Selenium'un başarısız olmasının nedeni muhtemelen headless Chrome'un bot
+#   olarak algılanıp engellenmesi. Kullanıcı tarafından İş Bankası'nın kendi
+#   sitesindeki değerlerle (5883.67 / 6627.74) doğrulandı — gerçek bayi kuru.
+#
+def fetch_isbank_gold_anlikaltin():
+    url = "https://anlikaltinfiyatlari.com/banka/is-bankasi"
+    req = urllib.request.Request(url, headers={
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                       "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+    })
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        raw = resp.read().decode("utf-8", errors="ignore")
+
+    text = re.sub(r"<[^>]+>", " ", raw)
+    text = re.sub(r"&nbsp;?", " ", text)
+
+    m = re.search(
+        r"Bankas[iı].{0,120}?(\d{3,5}[.,]\d{1,4})\D{1,30}?(\d{3,5}[.,]\d{1,4})",
+        text, re.I | re.S
+    )
+    if not m:
+        raise RuntimeError("anlikaltinfiyatlari: İş Bankası satırı bulunamadı")
+
+    alis  = parse_tr_number(m.group(1))
+    satis = parse_tr_number(m.group(2))
+    validate(alis,  GOLD_MIN, GOLD_MAX, "anlikaltinfiyatlari alış")
+    validate(satis, GOLD_MIN, GOLD_MAX, "anlikaltinfiyatlari satış")
+    if satis <= alis or not (GOLD_MIN_SPREAD <= (satis - alis) / alis < 0.30):
+        raise RuntimeError(f"anlikaltinfiyatlari: makas mantıksız (alış={alis}, satış={satis})")
+    return {"alis": round(alis, 2), "satis": round(satis, 2), "kaynak_detay": "anlikaltinfiyatlari (direkt HTTP)"}
+
+
 # ── CLAUDE WEB ARAMASI (fallback) ────────────────────────────────────────────
 
 def claude_search(prompt):
@@ -520,7 +557,16 @@ def fetch_isbank_gbp_web():
 # ── İŞ BANKASI VERİSİ AL (Selenium → Claude fallback) ───────────────────────
 
 def get_isbank_gold(driver):
-    # 1. Öncelik: resmi ASP tablo kod keşfi — bulursa JS/tarayıcı gerektirmez
+    # 1. Öncelik: anlikaltinfiyatlari doğrudan HTTP — İşBankası'na özel, JS gerektirmez,
+    #    kullanıcı tarafından gerçek İşBankası değerleriyle doğrulandı
+    try:
+        result = fetch_isbank_gold_anlikaltin()
+        log(f"  ✅ Altın (direkt HTTP): alış={result['alis']} satış={result['satis']}")
+        return result
+    except Exception as e:
+        log(f"  ⚠  anlikaltinfiyatlari direkt HTTP başarısız: {e}")
+
+    # 2. Öncelik: resmi İşBankası ASP tablo kod keşfi
     try:
         result = fetch_isbank_asp_altin()
         result["kaynak_detay"] = f"ASP fiyat tablosu ({result.pop('kaynak_kod')})"
