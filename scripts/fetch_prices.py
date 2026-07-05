@@ -314,6 +314,42 @@ def fetch_tcmb():
     return result
 
 
+# ── İŞ BANKASI RESMİ ASP FİYAT TABLOSU (JS gerektirmez, en güvenilir kaynak) ──
+#
+#   isbank.com.tr'nin canlı sayfası JS ile render ediliyor ama bankanın eski
+#   ASP altyapısı düz metin/HTML tablo döndürüyor — gerçek bayi kuru, tarayıcı
+#   gerektirmez. GBP/TRY için Selenium'dan bile önce bu denenir.
+#
+def fetch_isbank_asp_kur():
+    """isbank.com.tr/fiyatoran/FiyatTabloGoster.asp?trkd=*KUR üzerinden GBP bayi kurunu çeker."""
+    url = "https://www.isbank.com.tr/fiyatoran/FiyatTabloGoster.asp?trkd=*KUR&tip=HTML"
+    req = urllib.request.Request(url, headers={
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                       "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+    })
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        raw = resp.read().decode("windows-1254", errors="ignore")
+
+    # HTML etiketlerini at, satır satır tara
+    text = re.sub(r"<[^>]+>", " ", raw)
+    text = re.sub(r"&nbsp;?", " ", text)
+
+    m = re.search(
+        r"GBP[^\d]*?(\d{1,3}[.,]\d{2,5})\s+(\d{1,3}[.,]\d{2,5})",
+        text, re.I
+    )
+    if not m:
+        raise RuntimeError("ASP tablo: GBP satırı bulunamadı")
+
+    alis  = parse_tr_number(m.group(1))
+    satis = parse_tr_number(m.group(2))
+    validate(alis,  GBP_MIN, GBP_MAX, "ASP GBP alış")
+    validate(satis, GBP_MIN, GBP_MAX, "ASP GBP satış")
+    if satis <= alis:
+        raise RuntimeError(f"ASP tablo: satış({satis}) <= alış({alis}), sıra ters olabilir")
+    return {"alis": round(alis, 4), "satis": round(satis, 4)}
+
+
 # ── CLAUDE WEB ARAMASI (fallback) ────────────────────────────────────────────
 
 def claude_search(prompt):
@@ -375,11 +411,13 @@ def fetch_isbank_gbp_web():
         f"İş Bankası'nın BUGÜN ({TODAY}) uyguladığı İngiliz Sterlini (GBP) "
         "BAYİ ALIŞ ve BAYİ SATIŞ kurunu bul. "
         "Şu kaynakları sırayla kontrol et: "
-        "1) https://anlikaltinfiyatlari.com/banka/is-bankasi (GBP satırına bak) "
-        "2) https://www.isbank.com.tr/doviz-kurlari "
-        "3) https://kur.doviz.com/serbest-piyasa/sterlin "
+        "1) https://www.isbank.com.tr/fiyatoran/FiyatTabloGoster.asp?trkd=*KUR&tip=HTML "
+        "2) https://kur.doviz.com/isbankasi/sterlin (İş Bankası'na özel sayfa, GBP satırı) "
+        "3) https://anlikaltinfiyatlari.com/banka/is-bankasi (GBP satırına bak) "
         f"SADECE {TODAY} tarihli İş Bankası bayi kurunu döndür. "
-        "TCMB veya serbest piyasa kuru KABUL ETME — İş Bankası'nın kendi alış/satış fiyatı olmalı. "
+        "TCMB kuru veya 'serbest piyasa' / genel piyasa kuru KESİNLİKLE KABUL ETME — "
+        "sadece İş Bankası'nın kendi müşteri alış/satış fiyatı olmalı, kur.doviz.com/serbest-piyasa/* "
+        "gibi bankaya özel olmayan sayfalardan asla veri alma. "
         "İş Bankası GBP satış kuru genellikle 62-65 TL aralığında olur (TCMB'den ~1-2 TL yüksek). "
         "Sonucu YALNIZCA şu JSON formatında döndür: "
         '{"alis": <sayi>, "satis": <sayi>} '
@@ -415,6 +453,15 @@ def get_isbank_gold(driver):
         return None
 
 def get_isbank_gbp(driver):
+    # 1. Öncelik: resmi ASP tablo — JS/tarayıcı gerektirmez, gerçek bayi kuru
+    try:
+        result = fetch_isbank_asp_kur()
+        result["kaynak_detay"] = "ASP fiyat tablosu"
+        log(f"  ✅ ASP GBP: alış={result['alis']} satış={result['satis']}")
+        return result
+    except Exception as e:
+        log(f"  ⚠  ASP GBP başarısız: {e}")
+
     if driver:
         try:
             result = selenium_isbank_gbp(driver)
