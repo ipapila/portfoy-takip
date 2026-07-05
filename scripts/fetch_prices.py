@@ -350,6 +350,52 @@ def fetch_isbank_asp_kur():
     return {"alis": round(alis, 4), "satis": round(satis, 4)}
 
 
+# ── İŞ BANKASI RESMİ ASP — GRAM ALTIN (kod keşfi) ────────────────────────────
+#
+#   GBP için trkd=*KUR kodu doğrulandı ama gram altın için hangi trkd kodunun
+#   gerçek İşBankası bayi fiyatını döndürdüğü arama motorundan teyit edilemedi
+#   (canlı sayfa JS ile render ediliyor, arama motoru sadece kur tablosunu
+#   indexlemiş). Bu yüzden birkaç olası kodu GitHub Actions'ın gerçek internet
+#   erişimiyle sırayla dener; ilk makul gram-altın aralığında (3000-25000 TL)
+#   iki sayı döndüren kod kullanılır ve log'a hangi kodun işe yaradığı yazılır.
+#
+ALTIN_TRKD_ADAYLARI = ["*ALTIN", "*ALT", "*ATN", "*AUR", "*GAU", "*ALTN", "*ATIN"]
+
+def fetch_isbank_asp_altin():
+    for kod in ALTIN_TRKD_ADAYLARI:
+        url = f"https://www.isbank.com.tr/fiyatoran/FiyatTabloGoster.asp?trkd={kod}&tip=HTML"
+        try:
+            req = urllib.request.Request(url, headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                               "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+            })
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                raw = resp.read().decode("windows-1254", errors="ignore")
+            text = re.sub(r"<[^>]+>", " ", raw)
+            text = re.sub(r"&nbsp;?", " ", text)
+
+            # "gram" veya "altın/altin" geçen civarda iki makul sayı ara
+            candidates = re.finditer(r'\b[3-9]\d{3}[.,]\d{1,4}\b|\b1\d{4}[.,]\d{1,4}\b', text)
+            nums = []
+            for m in candidates:
+                try:
+                    v = parse_tr_number(m.group())
+                    if GOLD_MIN <= v <= GOLD_MAX:
+                        nums.append(v)
+                except Exception:
+                    pass
+            nums = sorted(set(nums))
+            pairs = [(a, b) for a in nums for b in nums if b > a and 0 < (b - a) / a < 0.20]
+            if pairs:
+                alis, satis = pairs[0]
+                log(f"  ✅ ASP Altın kod bulundu: trkd={kod} → alış={alis} satış={satis}")
+                log(f"     ℹ  Bu kodu doğruladıktan sonra ALTIN_TRKD_ADAYLARI yerine sabit kullanabilirsin.")
+                return {"alis": round(alis, 2), "satis": round(satis, 2), "kaynak_kod": kod}
+        except Exception as e:
+            log(f"  ⚠  ASP Altın deneme ({kod}) başarısız: {e}")
+    raise RuntimeError(f"ASP tablo: {len(ALTIN_TRKD_ADAYLARI)} aday kod da altın vermedi")
+
+
 # ── CLAUDE WEB ARAMASI (fallback) ────────────────────────────────────────────
 
 def claude_search(prompt):
@@ -434,6 +480,14 @@ def fetch_isbank_gbp_web():
 # ── İŞ BANKASI VERİSİ AL (Selenium → Claude fallback) ───────────────────────
 
 def get_isbank_gold(driver):
+    # 1. Öncelik: resmi ASP tablo kod keşfi — bulursa JS/tarayıcı gerektirmez
+    try:
+        result = fetch_isbank_asp_altin()
+        result["kaynak_detay"] = f"ASP fiyat tablosu ({result.pop('kaynak_kod')})"
+        return result
+    except Exception as e:
+        log(f"  ⚠  ASP Altın başarısız: {e}")
+
     if driver:
         try:
             result = selenium_isbank_gold(driver)
