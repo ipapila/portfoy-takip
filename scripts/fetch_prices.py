@@ -32,6 +32,10 @@ TODAY     = date.today().isoformat()
 
 GOLD_MIN, GOLD_MAX = 3000.0, 25000.0
 GBP_MIN,  GBP_MAX  = 30.0,   200.0
+# İş Bankası gram altın alış/satış makası genelde %5-%20 arasında geniştir
+# (bkz. kullanıcı doğrulaması: 5883.67/6627.74 ≈ %12.6 makas). Makası bundan
+# çok dar (<%GOLD_MIN_SPREAD) çıkan eşleşmeler muhtemelen yanlış ayrıştırmadır.
+GOLD_MIN_SPREAD = 0.03
 
 # Selenium kullanılabilir mi?
 SELENIUM_OK = False
@@ -182,7 +186,7 @@ def _selenium_gold_from_page(driver, url, label):
                     except Exception:
                         pass
                 nums = sorted(set(nums))
-                if len(nums) >= 2 and (nums[1] - nums[0]) / nums[0] < 0.25:
+                if len(nums) >= 2 and GOLD_MIN_SPREAD <= (nums[1] - nums[0]) / nums[0] < 0.25:
                     log(f"  ✅ Selenium Altın (kart/{label}): alış={nums[0]} satış={nums[1]}")
                     return {"alis": nums[0], "satis": nums[1], "kaynak_detay": label}
 
@@ -197,7 +201,7 @@ def _selenium_gold_from_page(driver, url, label):
         numbers = sorted(set(numbers))
         if len(numbers) >= 2:
             pairs = [(a, b) for a in numbers for b in numbers
-                     if b > a and 0 < (b - a) / a < 0.20]
+                     if b > a and GOLD_MIN_SPREAD <= (b - a) / a < 0.20]
             if pairs:
                 alis, satis = pairs[0]
                 log(f"  ✅ Selenium Altın (metin/{label}): alış={alis} satış={satis}")
@@ -381,7 +385,7 @@ def _parse_altin_from_text(text, label):
         except Exception:
             pass
     nums = sorted(set(nums))
-    pairs = [(a, b) for a in nums for b in nums if b > a and 0 < (b - a) / a < 0.20]
+    pairs = [(a, b) for a in nums for b in nums if b > a and GOLD_MIN_SPREAD <= (b - a) / a < 0.20]
     if pairs:
         alis, satis = pairs[0]
         log(f"  ✅ ASP Altın kod bulundu: {label} → alış={alis} satış={satis}")
@@ -404,7 +408,8 @@ def fetch_isbank_asp_altin():
         if m:
             alis  = parse_tr_number(m.group(2))
             satis = parse_tr_number(m.group(3))
-            if GOLD_MIN <= alis <= GOLD_MAX and GOLD_MIN <= satis <= GOLD_MAX and satis > alis:
+            if GOLD_MIN <= alis <= GOLD_MAX and GOLD_MIN <= satis <= GOLD_MAX and satis > alis \
+                    and GOLD_MIN_SPREAD <= (satis - alis) / alis < 0.30:
                 log(f"  ✅ ASP Altın kod bulundu: *KUR tablosu (ALTIN satırı) → alış={alis} satış={satis}")
                 return {"alis": round(alis, 2), "satis": round(satis, 2), "kaynak_kod": "*KUR (ALTIN satırı)"}
         log("  ℹ  ASP *KUR tablosunda ALTIN satırı bulunamadı, aday kodlar deneniyor")
