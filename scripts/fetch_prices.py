@@ -163,7 +163,7 @@ def _selenium_gold_from_page(driver, url, label):
                         pass
                 if len(nums) >= 2:
                     log(f"  ✅ Selenium Altın (tablo/{label}): alış={nums[0]} satış={nums[1]}")
-                    return {"alis": nums[0], "satis": nums[1]}
+                    return {"alis": nums[0], "satis": nums[1], "kaynak_detay": label}
 
         # Strateji B: sayfa genelinde alış/satış kartları
         candidates = driver.find_elements(By.CSS_SELECTOR, "div, li, tr, span")
@@ -184,7 +184,7 @@ def _selenium_gold_from_page(driver, url, label):
                 nums = sorted(set(nums))
                 if len(nums) >= 2 and (nums[1] - nums[0]) / nums[0] < 0.25:
                     log(f"  ✅ Selenium Altın (kart/{label}): alış={nums[0]} satış={nums[1]}")
-                    return {"alis": nums[0], "satis": nums[1]}
+                    return {"alis": nums[0], "satis": nums[1], "kaynak_detay": label}
 
         # Strateji C: sayfanın tüm metni
         page_text = driver.find_element(By.TAG_NAME, "body").text
@@ -201,19 +201,25 @@ def _selenium_gold_from_page(driver, url, label):
             if pairs:
                 alis, satis = pairs[0]
                 log(f"  ✅ Selenium Altın (metin/{label}): alış={alis} satış={satis}")
-                return {"alis": alis, "satis": satis}
+                return {"alis": alis, "satis": satis, "kaynak_detay": label}
 
     except Exception as e:
         log(f"  ⚠  Selenium ({label}) hata: {e}")
     return None
 
 
+# NOT: anlikaltinfiyatlari sayfası bankaya özel (İşBankası) veri iddia ediyor.
+# bigpara ve doviz.com GENEL piyasa gram altın fiyatı gösterir — İşBankası'nın
+# kendi bayi kuru DEĞİLDİR. Sadece anlikaltinfiyatlari başarısız olursa,
+# yaklaşık bir referans olarak kullanılır ve kayıtta bu açıkça işaretlenir.
+BANKAYA_OZEL_KAYNAKLAR = {"anlikaltinfiyatlari"}
+
 def selenium_isbank_gold(driver):
     """
     Birden fazla kaynağı sırayla dener:
-      1. anlikaltinfiyatlari.com/banka/is-bankasi
-      2. bigpara.hurriyet.com.tr/altin (gram altın tablosu)
-      3. altin.doviz.com (genel altın fiyatları)
+      1. anlikaltinfiyatlari.com/banka/is-bankasi (İşBankası'na özel — tercih edilen)
+      2. bigpara.hurriyet.com.tr/altin (GENEL piyasa, İşBankası'na özel DEĞİL)
+      3. altin.doviz.com (GENEL piyasa, İşBankası'na özel DEĞİL)
     """
     SOURCES = [
         ("https://anlikaltinfiyatlari.com/banka/is-bankasi", "anlikaltinfiyatlari"),
@@ -223,6 +229,8 @@ def selenium_isbank_gold(driver):
     for url, label in SOURCES:
         result = _selenium_gold_from_page(driver, url, label)
         if result:
+            if label not in BANKAYA_OZEL_KAYNAKLAR:
+                result["genel_piyasa"] = True
             return result
 
     raise RuntimeError("Selenium: İş Bankası altın fiyatı bulunamadı (3 kaynak denendi)")
@@ -361,7 +369,48 @@ def fetch_isbank_asp_kur():
 #
 ALTIN_TRKD_ADAYLARI = ["*ALTIN", "*ALT", "*ATN", "*AUR", "*GAU", "*ALTN", "*ATIN"]
 
+def _parse_altin_from_text(text, label):
+    """Verilen metinden 'gram/ALTIN' civarında makul bir alış/satış çifti ayrıştırmayı dener."""
+    candidates = re.finditer(r'\b[3-9]\d{3}[.,]\d{1,4}\b|\b1\d{4}[.,]\d{1,4}\b', text)
+    nums = []
+    for m in candidates:
+        try:
+            v = parse_tr_number(m.group())
+            if GOLD_MIN <= v <= GOLD_MAX:
+                nums.append(v)
+        except Exception:
+            pass
+    nums = sorted(set(nums))
+    pairs = [(a, b) for a in nums for b in nums if b > a and 0 < (b - a) / a < 0.20]
+    if pairs:
+        alis, satis = pairs[0]
+        log(f"  ✅ ASP Altın kod bulundu: {label} → alış={alis} satış={satis}")
+        return {"alis": round(alis, 2), "satis": round(satis, 2), "kaynak_kod": label}
+    return None
+
 def fetch_isbank_asp_altin():
+    # 0. Öncelik: GBP için doğrulanmış *KUR tablosunda ALTIN/GR satırı var mı?
+    try:
+        url = "https://www.isbank.com.tr/fiyatoran/FiyatTabloGoster.asp?trkd=*KUR&tip=HTML"
+        req = urllib.request.Request(url, headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                           "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+        })
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            raw = resp.read().decode("windows-1254", errors="ignore")
+        text = re.sub(r"<[^>]+>", " ", raw)
+        text = re.sub(r"&nbsp;?", " ", text)
+        m = re.search(r'(ALTIN|ALTN|GR\.?\s*ALTIN)[^\d]*?(\d{1,2}[.,]\d{3}[.,]\d{1,4}|\d{4,5}[.,]\d{1,4})\s+(\d{1,2}[.,]\d{3}[.,]\d{1,4}|\d{4,5}[.,]\d{1,4})', text, re.I)
+        if m:
+            alis  = parse_tr_number(m.group(2))
+            satis = parse_tr_number(m.group(3))
+            if GOLD_MIN <= alis <= GOLD_MAX and GOLD_MIN <= satis <= GOLD_MAX and satis > alis:
+                log(f"  ✅ ASP Altın kod bulundu: *KUR tablosu (ALTIN satırı) → alış={alis} satış={satis}")
+                return {"alis": round(alis, 2), "satis": round(satis, 2), "kaynak_kod": "*KUR (ALTIN satırı)"}
+        log("  ℹ  ASP *KUR tablosunda ALTIN satırı bulunamadı, aday kodlar deneniyor")
+    except Exception as e:
+        log(f"  ⚠  ASP *KUR tablosunda altın arama başarısız: {e}")
+
     for kod in ALTIN_TRKD_ADAYLARI:
         url = f"https://www.isbank.com.tr/fiyatoran/FiyatTabloGoster.asp?trkd={kod}&tip=HTML"
         try:
@@ -373,27 +422,13 @@ def fetch_isbank_asp_altin():
                 raw = resp.read().decode("windows-1254", errors="ignore")
             text = re.sub(r"<[^>]+>", " ", raw)
             text = re.sub(r"&nbsp;?", " ", text)
-
-            # "gram" veya "altın/altin" geçen civarda iki makul sayı ara
-            candidates = re.finditer(r'\b[3-9]\d{3}[.,]\d{1,4}\b|\b1\d{4}[.,]\d{1,4}\b', text)
-            nums = []
-            for m in candidates:
-                try:
-                    v = parse_tr_number(m.group())
-                    if GOLD_MIN <= v <= GOLD_MAX:
-                        nums.append(v)
-                except Exception:
-                    pass
-            nums = sorted(set(nums))
-            pairs = [(a, b) for a in nums for b in nums if b > a and 0 < (b - a) / a < 0.20]
-            if pairs:
-                alis, satis = pairs[0]
-                log(f"  ✅ ASP Altın kod bulundu: trkd={kod} → alış={alis} satış={satis}")
+            result = _parse_altin_from_text(text, f"trkd={kod}")
+            if result:
                 log(f"     ℹ  Bu kodu doğruladıktan sonra ALTIN_TRKD_ADAYLARI yerine sabit kullanabilirsin.")
-                return {"alis": round(alis, 2), "satis": round(satis, 2), "kaynak_kod": kod}
+                return result
         except Exception as e:
             log(f"  ⚠  ASP Altın deneme ({kod}) başarısız: {e}")
-    raise RuntimeError(f"ASP tablo: {len(ALTIN_TRKD_ADAYLARI)} aday kod da altın vermedi")
+    raise RuntimeError(f"ASP tablo: *KUR satırı ve {len(ALTIN_TRKD_ADAYLARI)} aday kod da altın vermedi")
 
 
 # ── CLAUDE WEB ARAMASI (fallback) ────────────────────────────────────────────
@@ -493,7 +528,11 @@ def get_isbank_gold(driver):
             result = selenium_isbank_gold(driver)
             validate(result["alis"],  GOLD_MIN, GOLD_MAX, "Selenium Altın alış")
             validate(result["satis"], GOLD_MIN, GOLD_MAX, "Selenium Altın satış")
-            result["kaynak_detay"] = "Selenium/anlikaltinfiyatlari"
+            kaynak_adi = result.get("kaynak_detay", "bilinmiyor")
+            result["kaynak_detay"] = f"Selenium/{kaynak_adi}"
+            if result.get("genel_piyasa"):
+                log(f"  ⚠  Selenium Altın kaynağı ({kaynak_adi}) GENEL PİYASA fiyatı — İşBankası'na özel değil")
+                result["kaynak_detay"] += " (genel piyasa, İşBankası'na özel değil)"
             return result
         except Exception as e:
             log(f"  ⚠  Selenium Altın başarısız, Claude'a geçiliyor: {e}")
