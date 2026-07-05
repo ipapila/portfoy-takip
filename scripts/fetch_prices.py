@@ -368,11 +368,20 @@ def fetch_isbank_gold_web():
     }
 
 def fetch_isbank_gbp_web():
+    import time as _time
+    ts = int(_time.time())
     prompt = (
-        f"Bugün {TODAY} tarihinde İş Bankası resmi sitesinde (isbank.com.tr) "
-        "yayınlanan İngiliz Sterlini (GBP) BAYİ ALIŞ ve BAYİ SATIŞ kuru nedir? "
-        "Önce https://www.isbank.com.tr/doviz-kurlari sayfasını kontrol et. "
-        "Sonucu YALNIZCA şu JSON formatında döndür, başka metin ekleme: "
+        f"Bugünün tarihi {TODAY}, Unix timestamp: {ts}. "
+        f"İş Bankası'nın BUGÜN ({TODAY}) uyguladığı İngiliz Sterlini (GBP) "
+        "BAYİ ALIŞ ve BAYİ SATIŞ kurunu bul. "
+        "Şu kaynakları sırayla kontrol et: "
+        "1) https://anlikaltinfiyatlari.com/banka/is-bankasi (GBP satırına bak) "
+        "2) https://www.isbank.com.tr/doviz-kurlari "
+        "3) https://kur.doviz.com/serbest-piyasa/sterlin "
+        f"SADECE {TODAY} tarihli İş Bankası bayi kurunu döndür. "
+        "TCMB veya serbest piyasa kuru KABUL ETME — İş Bankası'nın kendi alış/satış fiyatı olmalı. "
+        "İş Bankası GBP satış kuru genellikle 62-65 TL aralığında olur (TCMB'den ~1-2 TL yüksek). "
+        "Sonucu YALNIZCA şu JSON formatında döndür: "
         '{"alis": <sayi>, "satis": <sayi>} '
         "Ondalık için nokta kullan."
     )
@@ -381,6 +390,7 @@ def fetch_isbank_gbp_web():
         "alis":  validate(float(d["alis"]),  GBP_MIN, GBP_MAX, "Claude GBP alış"),
         "satis": validate(float(d["satis"]), GBP_MIN, GBP_MAX, "Claude GBP satış"),
     }
+
 
 
 # ── İŞ BANKASI VERİSİ AL (Selenium → Claude fallback) ───────────────────────
@@ -521,26 +531,41 @@ def run_gbp(tcmb_data, isbank_gbp):
     if isbank_gbp and ref and abs(isbank_gbp["satis"] - ref) / ref > 0.08:
         log(f"  ⚠  GBP: satış {isbank_gbp['satis']} öncekinden >%8 sapıyor")
 
-    primary = isbank_gbp or tcmb_gbp
+    # İş Bankası verisi yoksa TCMB'yi primary olarak kullanma —
+    # TCMB interbank kuru, İş Bankası bayi kurundan ~1-2 TL düşük kalır.
+    if isbank_gbp is None:
+        # Önceki günün İş Bankası değerini carry-forward yap
+        prev_records_all = [r for r in records if r["date"] < TODAY]
+        isbank_prev = next(
+            (r for r in reversed(prev_records_all)
+             if r.get("isbank_satis") and "TCMB" not in r.get("kaynak", "").replace("İşBankası+TCMB", "")),
+            None
+        )
+        if isbank_prev:
+            log(f"  ℹ  GBP: İşBankası başarısız — {isbank_prev['date']} İşBankası değeri carry-forward")
+            isbank_gbp = {
+                "alis":  isbank_prev["isbank_alis"],
+                "satis": isbank_prev["isbank_satis"],
+                "kaynak_detay": f"carry-forward {isbank_prev['date']}",
+            }
+        elif tcmb_gbp is None:
+            log("  ❌ GBP: İşBankası ve TCMB her ikisi de başarısız, kayıt atlanıyor.")
+            return
+        else:
+            # Gerçekten hiç İş Bankası geçmişi yoksa TCMB'yi kullan ama işaretle
+            log("  ⚠  GBP: İşBankası geçmişi yok, TCMB geçici olarak kullanılıyor (NOT: bayi kuru değil)")
+            isbank_gbp = {**tcmb_gbp, "kaynak_detay": "TCMB geçici (İşBankası yok)"}
+
     entry = {
         "date":  TODAY,
-        "alis":  primary["alis"],
-        "satis": primary["satis"],
+        "alis":  isbank_gbp["alis"],   # Her zaman İşBankası (veya carry-forward)
+        "satis": isbank_gbp["satis"],
     }
 
-    if isbank_gbp:
-        entry["isbank_alis"]  = isbank_gbp["alis"]
-        entry["isbank_satis"] = isbank_gbp["satis"]
-    elif prev:
-        entry["isbank_alis"]  = prev.get("isbank_alis")
-        entry["isbank_satis"] = prev.get("isbank_satis")
-        if entry["isbank_alis"]:
-            entry["alis"]  = entry["isbank_alis"]
-            entry["satis"] = entry["isbank_satis"]
-        log("  ℹ  GBP İşBankası: önceki değer korundu")
-    else:
-        entry["isbank_alis"]  = None
-        entry["isbank_satis"] = None
+    entry["isbank_alis"]  = isbank_gbp["alis"]
+    entry["isbank_satis"] = isbank_gbp["satis"]
+    if "carry-forward" in isbank_gbp.get("kaynak_detay", ""):
+        entry["carry_forward"] = isbank_gbp["kaynak_detay"]
 
     entry["tcmb_alis"]  = tcmb_gbp["alis"]  if tcmb_gbp else (prev.get("tcmb_alis")  if prev else None)
     entry["tcmb_satis"] = tcmb_gbp["satis"] if tcmb_gbp else (prev.get("tcmb_satis") if prev else None)
