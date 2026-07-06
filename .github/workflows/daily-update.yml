@@ -2,8 +2,11 @@ name: Günlük Fiyat Güncelleme
 
 on:
   schedule:
-    # Her gün Türkiye 18:00 (UTC 15:00), Pazartesi–Cuma
-    - cron: "17 15 * * 1-5"   # UTC 15:17 (TR 18:17) — saat başı yoğunluğundan kaçınır
+    # Her gün Türkiye ~18:17 (UTC 15:17), Pazartesi–Cuma
+    # NOT: Saat başı (:00) GitHub Actions'ta en yoğun andır; scheduled
+    # workflow'lar bu dakikada ciddi gecikme hatta bazı günler hiç
+    # tetiklenmeme riski taşır. :17 gibi rastgele bir dakika bu riski azaltır.
+    - cron: "17 15 * * 1-5"
   workflow_dispatch:
 
 permissions:
