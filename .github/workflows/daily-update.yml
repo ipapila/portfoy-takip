@@ -3,7 +3,7 @@ name: Günlük Fiyat Güncelleme
 on:
   schedule:
     # Her gün Türkiye 18:00 (UTC 15:00), Pazartesi–Cuma
-    - cron: "0 15 * * 1-5"
+    - cron: "17 15 * * 1-5"   # UTC 15:17 (TR 18:17) — saat başı yoğunluğundan kaçınır
   workflow_dispatch:
 
 permissions:
