@@ -1175,14 +1175,14 @@
   },
   {
     "date": "2026-07-13",
-    "alis": 61.2065,
-    "satis": 64.5983,
-    "isbank_alis": 61.2065,
-    "isbank_satis": 64.5983,
+    "alis": 61.1336,
+    "satis": 64.5245,
+    "isbank_alis": 61.1336,
+    "isbank_satis": 64.5245,
     "tcmb_alis": 62.7162,
     "tcmb_satis": 63.0432,
-    "fark_satis": 1.5551,
-    "fark_alis": -1.5097,
-    "kaynak": "İşBankası+TCMB (ASP fiyat tablosu)"
+    "fark_satis": 1.4813,
+    "fark_alis": -1.5826,
+    "kaynak": "İşBankası+TCMB (Selenium)"
   }
 ]
