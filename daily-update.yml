@@ -1,0 +1,135 @@
+name: Günlük Fiyat Güncelleme
+
+on:
+  schedule:
+    # Her gün Türkiye ~15:17 (UTC 12:17), Pazartesi–Cuma
+    # NOT: Saat başı (:00) GitHub Actions'ta en yoğun andır; scheduled
+    # workflow'lar bu dakikada ciddi gecikme hatta bazı günler hiç
+    # tetiklenmeme riski taşır. :17 gibi rastgele bir dakika bu riski azaltır.
+    # 13 Temmuz 2026'da 18:17 tetiklemesi hiç gerçekleşmedi (gecikme/atlama);
+    # daha az yoğun bir saate çekildi.
+    - cron: "17 12 * * 1-5"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fetch-and-commit:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Repoyu çek
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Python kur
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Chrome kur (Selenium için)
+        uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: stable
+
+      - name: Python bağımlılıklarını kur
+        run: pip install selenium webdriver-manager --quiet
+
+      - name: API key kontrolü
+        run: |
+          if [ -z "${{ secrets.ANTHROPIC_API_KEY }}" ]; then
+            echo "❌ ANTHROPIC_API_KEY secret tanımlı değil!"
+            exit 1
+          fi
+          echo "✅ ANTHROPIC_API_KEY mevcut."
+
+      - name: Fiyatları çek
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python scripts/fetch_prices.py
+
+      - name: Debug dump varsa yükle (altın sayfası bulunamadıysa)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-altin-sayfa
+          path: debug/
+          if-no-files-found: ignore
+          retention-days: 3
+
+      - name: Manuel revizyonu koru (main'deki manuel kayıt varsa öncelikli)
+        run: |
+          python3 << 'PYEOF'
+          import json, subprocess
+          from datetime import date
+          TODAY = date.today().isoformat()
+
+          def load(path):
+              with open(path) as f: return json.load(f)
+          def save(path, data):
+              with open(path, 'w') as f: json.dump(data, f, ensure_ascii=False, indent=2)
+
+          def get_main(path):
+              r = subprocess.run(['git', 'show', f'origin/main:{path}'], capture_output=True, text=True)
+              if r.returncode != 0: return []
+              return json.loads(r.stdout)
+
+          for fname in ['data/gold.json', 'data/gbp.json']:
+              local = load(fname)
+              main  = get_main(fname)
+              main_today  = next((r for r in main  if r['date'] == TODAY), None)
+              local_today = next((r for r in local if r['date'] == TODAY), None)
+
+              if main_today and main_today.get('kaynak','').endswith('(manuel)'):
+                  print(f"  ℹ {fname}: manuel kayıt var, korunuyor.")
+                  if local_today:
+                      merged = {**local_today, **{k:v for k,v in main_today.items() if v is not None}}
+                      merged['kaynak'] = main_today['kaynak']
+                      for i,r in enumerate(local):
+                          if r['date'] == TODAY:
+                              local[i] = merged; break
+                  else:
+                      local.append(main_today)
+                      local.sort(key=lambda x: x['date'])
+                  save(fname, local)
+              else:
+                  print(f"  ✓ {fname}: otomatik veri kullanılıyor.")
+          PYEOF
+
+      - name: Değişiklik var mı?
+        id: check
+        run: |
+          git diff --quiet data/gold.json data/gbp.json \
+            && echo "changed=false" >> $GITHUB_OUTPUT \
+            || echo "changed=true"  >> $GITHUB_OUTPUT
+
+      - name: main branch'e direkt commit at
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          DATE=$(date +'%Y-%m-%d')
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/gold.json data/gbp.json
+          git commit -m "chore: $DATE otomatik fiyat güncellemesi"
+          git push origin main
+          echo "✅ main'e commit atıldı: $DATE"
+
+      - name: Güncelleme özeti
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          python3 << 'PYEOF'
+          import json
+          with open("data/gold.json") as f: gold = json.load(f)
+          with open("data/gbp.json") as f: gbp  = json.load(f)
+          gl = gold[-1]
+          bl = gbp[-1]
+          print(f"📊 {gl['date']} — Altın: alış={gl.get('alis')} satış={gl.get('satis')}")
+          print(f"📊 {bl['date']} — GBP İşBank satış={bl.get('isbank_satis')} TCMB satış={bl.get('tcmb_satis')}")
+          PYEOF
+
+      - name: Değişiklik yoksa bildir
+        if: steps.check.outputs.changed == 'false'
+        run: echo "ℹ️ Veri değişmedi, commit atılmadı."
+
