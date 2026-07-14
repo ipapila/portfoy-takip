@@ -1184,5 +1184,17 @@
     "fark_satis": 1.4813,
     "fark_alis": -1.5826,
     "kaynak": "İşBankası+TCMB (Selenium)"
+  },
+  {
+    "date": "2026-07-14",
+    "alis": 61.2639,
+    "satis": 64.6562,
+    "isbank_alis": 61.2639,
+    "isbank_satis": 64.6562,
+    "tcmb_alis": 62.6363,
+    "tcmb_satis": 62.9628,
+    "fark_satis": 1.6934,
+    "fark_alis": -1.3724,
+    "kaynak": "İşBankası+TCMB (ASP fiyat tablosu)"
   }
 ]
