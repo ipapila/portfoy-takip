@@ -6,7 +6,9 @@ on:
     # NOT: Saat başı (:00) GitHub Actions'ta en yoğun andır; scheduled
     # workflow'lar bu dakikada ciddi gecikme hatta bazı günler hiç
     # tetiklenmeme riski taşır. :17 gibi rastgele bir dakika bu riski azaltır.
-    - cron: "17 15 * * 1-5"
+    - cron: "17 6 * * 1-5"   # TR ~09:17
+    - cron: "23 11 * * 1-5"  # TR ~14:23
+    - cron: "17 15 * * 1-5"  # TR ~18:17
   workflow_dispatch:
 
 permissions:
