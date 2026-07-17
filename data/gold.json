@@ -452,12 +452,12 @@
   },
   {
     "date": "2026-07-17",
-    "alis": 6059.49,
-    "satis": 6060.43,
-    "isbank_alis": 6059.49,
-    "isbank_satis": 6060.43,
+    "alis": 5702.38,
+    "satis": 6423.53,
+    "isbank_alis": 5702.38,
+    "isbank_satis": 6423.53,
     "tcmb_alis": null,
     "tcmb_satis": null,
-    "kaynak": "İşBankası (Claude web search, TCMB yok)"
+    "kaynak": "İşBankası (anlikaltinfiyatlari (direkt HTTP), TCMB yok)"
   }
 ]
