@@ -32,10 +32,15 @@ TODAY     = date.today().isoformat()
 
 GOLD_MIN, GOLD_MAX = 3000.0, 25000.0
 GBP_MIN,  GBP_MAX  = 30.0,   200.0
-# İş Bankası gram altın alış/satış makası genelde %5-%20 arasında geniştir
-# (bkz. kullanıcı doğrulaması: 5883.67/6627.74 ≈ %12.6 makas). Makası bundan
-# çok dar (<%GOLD_MIN_SPREAD) çıkan eşleşmeler muhtemelen yanlış ayrıştırmadır.
-GOLD_MIN_SPREAD = 0.03
+# İş Bankası gram altın alış/satış makası — 27.03-18.06.2026 arası 40+ günlük
+# temiz veriye göre tarihsel olarak %2.5-2.8 civarında sabit seyrediyor
+# (bkz. kullanıcı düzeltmesi, 22.07.2026: 19.06-22.07 arası kayıtlarda
+# yanlışlıkla ~%11-13 makaslı GENEL PİYASA verisi İşBankası bayi kuru
+# sanılmış ve normalize edilmiştir). Bu yüzden makas aralığı hem alttan
+# hem üstten sıkı tutulur; %5'i geçen hiçbir eşleşme İşBankası bayi kuru
+# olarak kabul edilmez.
+GOLD_MIN_SPREAD = 0.015
+GOLD_MAX_SPREAD = 0.05
 
 # Selenium kullanılabilir mi?
 SELENIUM_OK = False
@@ -186,7 +191,7 @@ def _selenium_gold_from_page(driver, url, label):
                     except Exception:
                         pass
                 nums = sorted(set(nums))
-                if len(nums) >= 2 and GOLD_MIN_SPREAD <= (nums[1] - nums[0]) / nums[0] < 0.25:
+                if len(nums) >= 2 and GOLD_MIN_SPREAD <= (nums[1] - nums[0]) / nums[0] <= GOLD_MAX_SPREAD:
                     log(f"  ✅ Selenium Altın (kart/{label}): alış={nums[0]} satış={nums[1]}")
                     return {"alis": nums[0], "satis": nums[1], "kaynak_detay": label}
 
@@ -201,7 +206,7 @@ def _selenium_gold_from_page(driver, url, label):
         numbers = sorted(set(numbers))
         if len(numbers) >= 2:
             pairs = [(a, b) for a in numbers for b in numbers
-                     if b > a and GOLD_MIN_SPREAD <= (b - a) / a < 0.20]
+                     if b > a and GOLD_MIN_SPREAD <= (b - a) / a <= GOLD_MAX_SPREAD]
             if pairs:
                 alis, satis = pairs[0]
                 log(f"  ✅ Selenium Altın (metin/{label}): alış={alis} satış={satis}")
@@ -387,7 +392,7 @@ def _parse_altin_from_text(text, label):
         except Exception:
             pass
     nums = sorted(set(nums))
-    pairs = [(a, b) for a in nums for b in nums if b > a and GOLD_MIN_SPREAD <= (b - a) / a < 0.20]
+    pairs = [(a, b) for a in nums for b in nums if b > a and GOLD_MIN_SPREAD <= (b - a) / a <= GOLD_MAX_SPREAD]
     if pairs:
         alis, satis = pairs[0]
         log(f"  ✅ ASP Altın kod bulundu: {label} → alış={alis} satış={satis}")
@@ -411,7 +416,7 @@ def fetch_isbank_asp_altin():
             alis  = parse_tr_number(m.group(2))
             satis = parse_tr_number(m.group(3))
             if GOLD_MIN <= alis <= GOLD_MAX and GOLD_MIN <= satis <= GOLD_MAX and satis > alis \
-                    and GOLD_MIN_SPREAD <= (satis - alis) / alis < 0.30:
+                    and GOLD_MIN_SPREAD <= (satis - alis) / alis <= GOLD_MAX_SPREAD:
                 log(f"  ✅ ASP Altın kod bulundu: *KUR tablosu (ALTIN satırı) → alış={alis} satış={satis}")
                 return {"alis": round(alis, 2), "satis": round(satis, 2), "kaynak_kod": "*KUR (ALTIN satırı)"}
         log("  ℹ  ASP *KUR tablosunda ALTIN satırı bulunamadı, aday kodlar deneniyor")
@@ -440,10 +445,15 @@ def fetch_isbank_asp_altin():
 
 # ── ANLIKALTINFIYATLARI — DOĞRUDAN HTTP (Selenium'a gerek yok) ──────────────
 #
-#   Bu site JS render gerektirmiyor — düz urllib GET ile tam veri geliyor.
-#   Selenium'un başarısız olmasının nedeni muhtemelen headless Chrome'un bot
-#   olarak algılanıp engellenmesi. Kullanıcı tarafından İş Bankası'nın kendi
-#   sitesindeki değerlerle (5883.67 / 6627.74) doğrulandı — gerçek bayi kuru.
+#   DİKKAT: Bu kaynak 19.06-22.07.2026 arasında sürekli olarak İşBankası bayi
+#   kuru DEĞİL, çok daha geniş (~%11-13) makaslı GENEL PİYASA/referans verisi
+#   döndürdüğü kullanıcı tarafından tespit edilip 22.07.2026'da düzeltildi.
+#   O tarihten önceki bir oturumda bu sitenin verisi yanlışlıkla "gerçek bayi
+#   kuru" diye doğrulanmıştı — o doğrulama hatalıydı. Bu fonksiyon artık sıkı
+#   GOLD_MIN_SPREAD/GOLD_MAX_SPREAD ile korunuyor; site gerçekten İşBankası
+#   bayi kuru vermeye başlarsa yine kabul edilir, ama mevcut geniş makaslı
+#   davranışı sürdürüyorsa artık her seferinde reddedilip bir alt fallback'e
+#   (ASP tablo) düşülecektir — bu istenen davranıştır.
 #
 def fetch_isbank_gold_anlikaltin():
     url = "https://anlikaltinfiyatlari.com/banka/is-bankasi"
@@ -468,8 +478,8 @@ def fetch_isbank_gold_anlikaltin():
     satis = parse_tr_number(m.group(2))
     validate(alis,  GOLD_MIN, GOLD_MAX, "anlikaltinfiyatlari alış")
     validate(satis, GOLD_MIN, GOLD_MAX, "anlikaltinfiyatlari satış")
-    if satis <= alis or not (GOLD_MIN_SPREAD <= (satis - alis) / alis < 0.30):
-        raise RuntimeError(f"anlikaltinfiyatlari: makas mantıksız (alış={alis}, satış={satis})")
+    if satis <= alis or not (GOLD_MIN_SPREAD <= (satis - alis) / alis <= GOLD_MAX_SPREAD):
+        raise RuntimeError(f"anlikaltinfiyatlari: makas mantıksız (alış={alis}, satış={satis}, makas=%{(satis-alis)/alis*100:.2f})")
     return {"alis": round(alis, 2), "satis": round(satis, 2), "kaynak_detay": "anlikaltinfiyatlari (direkt HTTP)"}
 
 
@@ -507,18 +517,21 @@ def fetch_isbank_gold_web():
     ts = int(_time.time())  # önbellek kırıcı
     prompt = (
         f"Bugünün tarihi {TODAY} ve şu anki Unix timestamp: {ts}. "
-        f"Türkiye piyasasında BUGÜN ({TODAY}) geçerli gram altın fiyatını bul. "
+        f"Türkiye piyasasında BUGÜN ({TODAY}) geçerli İŞ BANKASI'nın kendi "
+        "gişe/bayi ALIŞ ve SATIŞ gram altın fiyatını bul (genel piyasa "
+        "referans fiyatı DEĞİL, bankaya özel bayi kuru olmalı). "
         "Önbellek kullanma; şu sayfaları CANLI olarak kontrol et: "
-        "1) https://bigpara.hurriyet.com.tr/altin/ "
-        "2) https://altin.doviz.com "
-        "3) https://www.altinkaynak.com/Altin/Kur/Gram "
-        "4) https://anlikaltinfiyatlari.com/banka/is-bankasi "
+        "1) https://www.isbank.com.tr/fiyatoran/FiyatTabloGoster.asp?trkd=*KUR&tip=HTML "
+        "2) https://anlikaltinfiyatlari.com/banka/is-bankasi "
         f"Sayfaların tepesinde {TODAY} tarihi yazıyor mu kontrol et. "
         f"SADECE {TODAY} tarihli güncel veriyi döndür. "
         "Önceki güne ait ya da 'son güncelleme: dün' gibi ifade içeren veri varsa o kaynağı atla. "
+        "İş Bankası'nın gerçek bayi kurunda alış-satış makası genellikle %2-3.5 arasındadır "
+        "(satış, alıştan yaklaşık %2.5-2.8 daha yüksektir) — makas %5'i aşan ya da %1'in altında "
+        "kalan bir eşleşme bulursan bu genel piyasa fiyatıdır, KULLANMA, başka kaynağa bak. "
         "Sonucu YALNIZCA şu JSON formatında döndür, başka hiçbir metin ekleme: "
         '{"alis": <sayi>, "satis": <sayi>} '
-        "Ondalık için nokta kullan. Örnek: {\"alis\": 5800.5, \"satis\": 6550.0}"
+        "Ondalık için nokta kullan. Örnek: {\"alis\": 6350.5, \"satis\": 6525.0}"
     )
     d = extract_json(claude_search(prompt))
     return {
@@ -557,8 +570,11 @@ def fetch_isbank_gbp_web():
 # ── İŞ BANKASI VERİSİ AL (Selenium → Claude fallback) ───────────────────────
 
 def get_isbank_gold(driver):
-    # 1. Öncelik: anlikaltinfiyatlari doğrudan HTTP — İşBankası'na özel, JS gerektirmez,
-    #    kullanıcı tarafından gerçek İşBankası değerleriyle doğrulandı
+    # 1. Öncelik: anlikaltinfiyatlari doğrudan HTTP — İşBankası'na özel, JS gerektirmez.
+    #    NOT: Bu kaynak geçmişte (19.06-22.07.2026) sürekli olarak İşBankası
+    #    bayi kuru yerine geniş makaslı genel piyasa verisi döndürdü. Artık
+    #    GOLD_MIN_SPREAD/GOLD_MAX_SPREAD ile sıkı doğrulanıyor; site davranışını
+    #    değiştirmediyse bu adım her seferinde reddedip ASP tabloya düşecektir.
     try:
         result = fetch_isbank_gold_anlikaltin()
         log(f"  ✅ Altın (direkt HTTP): alış={result['alis']} satış={result['satis']}")
