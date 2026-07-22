@@ -486,12 +486,12 @@
   },
   {
     "date": "2026-07-22",
-    "alis": 6077.23,
-    "satis": 6245.87,
-    "isbank_alis": 6077.23,
-    "isbank_satis": 6245.87,
+    "alis": 6151.77,
+    "satis": 6321.0,
+    "isbank_alis": 6151.77,
+    "isbank_satis": 6321.0,
     "tcmb_alis": null,
     "tcmb_satis": null,
-    "kaynak": "düzeltme: makas %2.7 normalize edildi (orijinal alis: 6245.05)"
+    "kaynak": "İşBankası (anlikaltinfiyatlari (direkt HTTP), TCMB yok)"
   }
 ]
