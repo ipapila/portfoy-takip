@@ -506,10 +506,10 @@
   },
   {
     "date": "2026-07-24",
-    "alis": 6054.1,
-    "satis": 6220.59,
-    "isbank_alis": 6054.1,
-    "isbank_satis": 6220.59,
+    "alis": 6062.98,
+    "satis": 6229.75,
+    "isbank_alis": 6062.98,
+    "isbank_satis": 6229.75,
     "tcmb_alis": null,
     "tcmb_satis": null,
     "kaynak": "İşBankası (anlikaltinfiyatlari (direkt HTTP), TCMB yok)"
