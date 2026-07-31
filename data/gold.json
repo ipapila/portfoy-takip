@@ -556,12 +556,12 @@
   },
   {
     "date": "2026-07-31",
-    "alis": 6064.79,
-    "satis": 6231.54,
-    "isbank_alis": 6064.79,
-    "isbank_satis": 6231.54,
+    "alis": 5805.51,
+    "satis": 5985.96,
+    "isbank_alis": 5805.51,
+    "isbank_satis": 5985.96,
     "tcmb_alis": null,
     "tcmb_satis": null,
-    "kaynak": "İşBankası (anlikaltinfiyatlari (direkt HTTP), TCMB yok)"
+    "kaynak": "İşBankası (Selenium/bigpara (genel piyasa, İşBankası'na özel değil), TCMB yok)"
   }
 ]
