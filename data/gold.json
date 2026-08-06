@@ -585,13 +585,23 @@
     "kaynak": "İşBankası (Selenium/doviz.com (genel piyasa, İşBankası'na özel değil), TCMB yok)"
   },
   {
-  "date": "2026-08-05",
-  "alis": 6101.12,
-  "satis": 6872.69,
-  "isbank_alis": 6101.12,
-  "isbank_satis": 6872.69,
-  "tcmb_alis": null,
-  "tcmb_satis": null,
-  "kaynak": "düzeltme: manuel (yanlış Selenium verisi yerine)"
-}
+    "date": "2026-08-05",
+    "alis": 6101.12,
+    "satis": 6872.69,
+    "isbank_alis": 6101.12,
+    "isbank_satis": 6872.69,
+    "tcmb_alis": null,
+    "tcmb_satis": null,
+    "kaynak": "düzeltme: manuel (yanlış Selenium verisi yerine)"
+  },
+  {
+    "date": "2026-08-06",
+    "alis": 6405.39,
+    "satis": 6583.39,
+    "isbank_alis": 6405.39,
+    "isbank_satis": 6583.39,
+    "tcmb_alis": null,
+    "tcmb_satis": null,
+    "kaynak": "İşBankası (anlikaltinfiyatlari (direkt HTTP), TCMB yok)"
+  }
 ]
