@@ -588,8 +588,8 @@
     "date": "2026-08-05",
     "alis": 10375.0,
     "satis": 10551.0,
-    "isbank_alis": 10375.0,
-    "isbank_satis": 10551.0,
+    "isbank_alis": 6101.12,
+    "isbank_satis": 6872.69,
     "tcmb_alis": null,
     "tcmb_satis": null,
     "kaynak": "İşBankası (Selenium/bigpara (genel piyasa, İşBankası'na özel değil), TCMB yok)"
