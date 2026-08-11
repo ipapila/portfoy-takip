@@ -670,7 +670,7 @@ boot();
     requireAdmin: false,   // bu sayfa her üyeye açık
     onReady: (user, admin) => {
       document.getElementById('authGate').style.display = 'none';
-      document.getElementById('page').style.display = '';
+      document.getElementById('page').style.display = 'block';
       document.getElementById('userEmail').textContent = user.email;
       window.__isAdmin = admin;
       if(admin) document.getElementById('editBtn').style.display = '';
