@@ -238,12 +238,12 @@
     <h2>İlk Yatırım</h2>
     <div class="hint">Sahip olduğun gram altını ve maliyetini bir kez gir — kar/zarar buna göre hesaplanır. Bu bilgi yalnızca bu tarayıcıda saklanır, repoya yazılmaz.</div>
     <div class="invest-grid">
-      <div class="field"><label>Tarih</label><input type="date" id="invDate"></div>
-      <div class="field"><label>Miktar (gram)</label><input type="number" id="invGram" step="0.01" placeholder="örn. 10"></div>
-      <div class="field"><label>Alış Fiyatı (TL/gram)</label><input type="number" id="invPrice" step="0.01" placeholder="örn. 6450"></div>
+      <div class="field"><label>Tarih</label><input type="date" id="invDate" name="invest_date" autocomplete="off"></div>
+      <div class="field"><label>Miktar (gram)</label><input type="number" id="invGram" name="invest_gram" step="0.01" placeholder="örn. 10" autocomplete="off" inputmode="decimal"></div>
+      <div class="field"><label>Alış Fiyatı (TL/gram)</label><input type="number" id="invPrice" name="invest_price" step="0.01" placeholder="örn. 6450" autocomplete="off" inputmode="decimal"></div>
       <div class="field">
         <label>Alındığı Kaynak</label>
-        <select id="invSource">
+        <select id="invSource" name="invest_source" autocomplete="off">
           <option value="garanti">Garanti Bankası</option>
           <option value="yapikredi">Yapı Kredi Bankası</option>
           <option value="merkez">Merkez Bankası</option>
@@ -670,7 +670,7 @@ boot();
     requireAdmin: false,   // bu sayfa her üyeye açık
     onReady: (user, admin) => {
       document.getElementById('authGate').style.display = 'none';
-      document.getElementById('page').style.display = 'block';
+      document.getElementById('page').style.display = '';
       document.getElementById('userEmail').textContent = user.email;
       window.__isAdmin = admin;
       if(admin) document.getElementById('editBtn').style.display = '';
