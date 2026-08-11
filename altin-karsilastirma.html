@@ -180,10 +180,29 @@
     .field-row2 { grid-template-columns:1fr; }
     .modal { padding:20px; }
   }
+
+  /* ── AUTH GATE ── */
+  #page { display:none; }
+  #authGate {
+    min-height:100vh; display:flex; align-items:center; justify-content:center;
+    color:var(--muted); font-size:13px; gap:10px;
+  }
+  #authGate .spinner {
+    width:15px; height:15px; border:2px solid rgba(255,255,255,.15); border-top-color:var(--c2);
+    border-radius:50%; animation:authspin .6s linear infinite;
+  }
+  @keyframes authspin { to { transform:rotate(360deg); } }
+  .user-chip { display:flex; align-items:center; gap:8px; }
+  .logout-btn {
+    background:none; border:1px solid var(--border2); color:var(--muted); border-radius:7px;
+    padding:5px 10px; font-family:var(--font); font-size:11.5px; cursor:pointer;
+  }
+  .logout-btn:hover { color:var(--text); border-color:var(--red); }
 </style>
 </head>
 <body>
-<div class="page">
+<div id="authGate"><div class="spinner"></div><span>Giriş kontrol ediliyor...</span></div>
+<div class="page" id="page">
 
   <header class="masthead">
     <div>
@@ -196,7 +215,11 @@
         <div>Son güncelleme: <strong id="lastUpdate">—</strong></div>
         <div>Hafta içi ~2 saatte bir otomatik güncellenir</div>
       </div>
-      <button class="btn-edit" onclick="openModal()">✏️ Bugünün fiyatını düzelt</button>
+      <div class="user-chip">
+        <span id="userEmail" style="font-size:11.5px;color:var(--muted);"></span>
+        <button class="logout-btn" onclick="doLogout()">Çıkış</button>
+      </div>
+      <button class="btn-edit" id="editBtn" onclick="openModal()" style="display:none;">✏️ Bugünün fiyatını düzelt</button>
     </div>
   </header>
 
@@ -577,6 +600,7 @@ function setBusy(b){
 
 async function modalSave(){
   hideModalAlerts();
+  if(!window.__isAdmin) return showModalErr('Bu işlem için admin yetkisi gerekiyor.');
   const token = document.getElementById('mToken').value.trim();
   if(!token) return showModalErr('GitHub token girilmedi.');
   const targetDate = _modalDate || today;
@@ -635,6 +659,23 @@ async function modalSave(){
 document.addEventListener('keydown', e => { if(e.key==='Escape') closeModal(); });
 
 boot();
+</script>
+
+<script type="module">
+  import { guardPage, logout } from './js/auth.js';
+
+  window.doLogout = function(){ logout(); };
+
+  guardPage({
+    requireAdmin: false,   // bu sayfa her üyeye açık
+    onReady: (user, admin) => {
+      document.getElementById('authGate').style.display = 'none';
+      document.getElementById('page').style.display = '';
+      document.getElementById('userEmail').textContent = user.email;
+      window.__isAdmin = admin;
+      if(admin) document.getElementById('editBtn').style.display = '';
+    }
+  });
 </script>
 </body>
 </html>
