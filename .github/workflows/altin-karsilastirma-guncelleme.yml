@@ -1,0 +1,84 @@
+name: Gram Altın Karşılaştırma Güncelleme
+
+on:
+  schedule:
+    # Türkiye saatiyle ~09:22, 11:22, 13:22, 15:22, 17:22 — Pazartesi–Cuma
+    # (Cumartesi/Pazar tarama yok; bankalar hafta sonu kur güncellemiyor.)
+    # NOT: Saat başı (:00) GitHub Actions'ta en yoğun andır — scheduled
+    # workflow'lar bu dakikada gecikebilir hatta hiç tetiklenmeyebilir.
+    # :22 gibi rastgele bir dakika bu riski azaltır (bkz. daily-update.yml
+    # dip notu — 13 Temmuz 2026'da benzer bir tetikleme hiç gerçekleşmedi).
+    - cron: "22 6 * * 1-5"   # TR ~09:22
+    - cron: "22 8 * * 1-5"   # TR ~11:22
+    - cron: "22 10 * * 1-5"  # TR ~13:22
+    - cron: "22 12 * * 1-5"  # TR ~15:22
+    - cron: "22 14 * * 1-5"  # TR ~17:22
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fetch-and-commit:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Repoyu çek
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Python kur
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: API key kontrolü
+        run: |
+          if [ -z "${{ secrets.ANTHROPIC_API_KEY }}" ]; then
+            echo "❌ ANTHROPIC_API_KEY secret tanımlı değil!"
+            exit 1
+          fi
+          echo "✅ ANTHROPIC_API_KEY mevcut."
+
+      - name: Fiyatları çek
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python scripts/fetch_altin_karsilastirma.py
+
+      - name: Değişiklik var mı?
+        id: check
+        run: |
+          git diff --quiet data/altin-karsilastirma.json \
+            && echo "changed=false" >> $GITHUB_OUTPUT \
+            || echo "changed=true"  >> $GITHUB_OUTPUT
+
+      - name: main branch'e direkt commit at
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          DATE=$(date +'%Y-%m-%d %H:%M')
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/altin-karsilastirma.json
+          git commit -m "chore: $DATE gram altın karşılaştırma güncellemesi"
+          git push origin main
+          echo "✅ main'e commit atıldı: $DATE"
+
+      - name: Güncelleme özeti
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          python3 << 'PYEOF'
+          import json
+          with open("data/altin-karsilastirma.json") as f:
+              data = json.load(f)
+          last = data[-1]
+          print(f"📊 {last['date']} — "
+                f"Garanti={last.get('garanti_satis')} "
+                f"YapıKredi={last.get('yapikredi_satis')} "
+                f"Merkez={last.get('merkez_satis')} "
+                f"Serbest={last.get('serbest_satis')}")
+          PYEOF
+
+      - name: Değişiklik yoksa bildir
+        if: steps.check.outputs.changed == 'false'
+        run: echo "ℹ️ Veri değişmedi, commit atılmadı."
