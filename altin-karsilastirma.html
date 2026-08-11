@@ -92,6 +92,26 @@
   .btn-primary-sm:hover { opacity:.85; }
   .invest-note { font-size:11.5px; color:var(--muted); }
 
+  .invest-list { margin-top:16px; border-top:1px solid var(--border); padding-top:12px; }
+  .invest-empty { font-size:12px; color:var(--muted); padding:6px 2px; }
+  .invest-row {
+    display:grid; grid-template-columns:14px 1fr 1.3fr 0.8fr 1fr 1fr 24px;
+    align-items:center; gap:10px; padding:8px 4px; font-size:12.5px;
+    border-bottom:1px solid var(--border);
+  }
+  .invest-row:last-child { border-bottom:none; }
+  .invest-dot { width:9px; height:9px; border-radius:50%; }
+  .invest-cell.ta-r { text-align:right; color:var(--muted); }
+  .invest-del {
+    background:none; border:none; color:var(--muted); cursor:pointer; font-size:13px;
+    padding:2px 6px; border-radius:5px; justify-self:end;
+  }
+  .invest-del:hover { color:var(--red); background:var(--red-bg); }
+  @media (max-width:720px){
+    .invest-row { grid-template-columns:14px 1fr 1fr 24px; row-gap:2px; }
+    .invest-row .invest-cell:nth-child(4), .invest-row .invest-cell:nth-child(5) { grid-column: 2 / 4; }
+  }
+
   .section-label { display:flex; align-items:center; gap:10px; margin-bottom:16px; }
   .section-label h2 { font-size:15px; font-weight:600; letter-spacing:-.2px; }
 
@@ -236,7 +256,7 @@
   <!-- İLK YATIRIM -->
   <div class="invest-card">
     <h2>İlk Yatırım</h2>
-    <div class="hint">Sahip olduğun gram altını ve maliyetini bir kez gir — kar/zarar buna göre hesaplanır. Bu bilgi yalnızca bu tarayıcıda saklanır, repoya yazılmaz.</div>
+    <div class="hint">Farklı bankalardan / farklı tarihlerde yaptığın alımları tek tek ekle — her biri ayrı kayıt olarak saklanır, kar/zarar ve grafik hepsini birlikte gösterir.</div>
     <input type="text" name="fakeusernameremembered" tabindex="-1" aria-hidden="true" style="position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0;">
     <input type="password" name="fakepasswordremembered" tabindex="-1" aria-hidden="true" style="position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0;">
     <div class="invest-grid">
@@ -254,9 +274,10 @@
       </div>
     </div>
     <div class="invest-actions">
-      <button class="btn-primary-sm" onclick="saveInvestment()">Yatırımı Kaydet</button>
+      <button class="btn-primary-sm" onclick="saveInvestment()">Yatırımı Ekle</button>
       <span class="invest-note" id="invSaved"></span>
     </div>
+    <div id="investList" class="invest-list"></div>
   </div>
 
   <!-- ÖZET -->
@@ -265,8 +286,8 @@
 
   <div class="overall-strip" id="overallStrip" style="display:none;">
     <div class="item"><div class="lbl">Toplam Maliyet</div><div class="val" id="totalCost">—</div></div>
-    <div class="item"><div class="lbl">4 Kaynak Ortalama Değer</div><div class="val" id="avgValue">—</div></div>
-    <div class="item"><div class="lbl">Ortalama Kar/Zarar</div><div class="val" id="avgPnl">—</div></div>
+    <div class="item"><div class="lbl">Toplam Güncel Değer</div><div class="val" id="avgValue">—</div></div>
+    <div class="item"><div class="lbl">Toplam Kar/Zarar</div><div class="val" id="avgPnl">—</div></div>
   </div>
 
   <!-- GRAFİK -->
@@ -281,6 +302,14 @@
       </div>
     </div>
     <div class="chart-wrap"><canvas id="priceChart"></canvas></div>
+  </div>
+
+  <!-- YATIRIM PERFORMANSI -->
+  <div class="chart-card" id="investChartCard" style="display:none;">
+    <div class="chart-top">
+      <span class="chart-ttl">Yatırımlarının güncel değeri (TL)</span>
+    </div>
+    <div class="chart-wrap"><canvas id="investChart"></canvas></div>
   </div>
 
   <!-- TABLO -->
@@ -386,9 +415,29 @@ const dd   = s => { const [y,m,d] = s.split('-'); return `${d}.${m}.${y}`; };
 const sign = n => n >= 0 ? '+' : '';
 const today = new Date(Date.now() + 3 * 3600 * 1000).toISOString().slice(0, 10);
 
-function loadInvestment(){
-  try { return JSON.parse(localStorage.getItem('altin_yatirim') || 'null'); }
-  catch(e){ return null; }
+const INV_PALETTE = ['#d4a847','#5b8eff','#9c7ef0','#34c78a','#f0a5d8','#f0c360','#60d4f0','#f06060','#8ce06a','#c78ad4','#60f0c0','#e0905a'];
+const invColor = i => INV_PALETTE[i % INV_PALETTE.length];
+const SOURCE_LABEL = Object.fromEntries(SOURCES.map(s=>[s.key, s.label]));
+
+function loadInvestments(){
+  try{
+    const arr = JSON.parse(localStorage.getItem('altin_yatirimlar') || 'null');
+    if(Array.isArray(arr)) return arr;
+  } catch(e){}
+  // eski tekil kayıt biçiminden bir kereliğine taşı
+  try{
+    const old = JSON.parse(localStorage.getItem('altin_yatirim') || 'null');
+    if(old && old.gram && old.price){
+      const migrated = [{ id: 'm'+Date.now(), date: old.date, gram: old.gram, price: old.price, source: old.source, total: old.total }];
+      localStorage.setItem('altin_yatirimlar', JSON.stringify(migrated));
+      localStorage.removeItem('altin_yatirim');
+      return migrated;
+    }
+  } catch(e){}
+  return [];
+}
+function saveInvestments(list){
+  localStorage.setItem('altin_yatirimlar', JSON.stringify(list));
 }
 function saveInvestment(){
   const date  = document.getElementById('invDate').value || today;
@@ -396,25 +445,60 @@ function saveInvestment(){
   const price = parseFloat(document.getElementById('invPrice').value);
   const source= document.getElementById('invSource').value;
   if(!gram || !price){ document.getElementById('invSaved').textContent = 'Lütfen gram ve fiyat gir.'; return; }
-  localStorage.setItem('altin_yatirim', JSON.stringify({date, gram, price, source, total: gram*price}));
-  document.getElementById('invSaved').textContent = 'Kaydedildi ✓';
+  const list = loadInvestments();
+  list.push({ id: Date.now()+'_'+Math.random().toString(36).slice(2,7), date, gram, price, source, total: gram*price });
+  saveInvestments(list);
+  document.getElementById('invSaved').textContent = 'Eklendi ✓';
+  document.getElementById('invGram').value = '';
+  document.getElementById('invPrice').value = '';
+  document.getElementById('invDate').value = today;
   render();
+}
+function deleteInvestment(id){
+  const list = loadInvestments().filter(x => x.id !== id);
+  saveInvestments(list);
+  render();
+}
+function renderInvestList(){
+  const wrap = document.getElementById('investList');
+  const list = loadInvestments();
+  if(!list.length){ wrap.innerHTML = '<div class="invest-empty">Henüz kayıtlı yatırım yok.</div>'; return; }
+  wrap.innerHTML = list.map((inv,i) => `
+    <div class="invest-row">
+      <span class="invest-dot" style="background:${invColor(i)}"></span>
+      <span class="invest-cell">${dd(inv.date)}</span>
+      <span class="invest-cell">${SOURCE_LABEL[inv.source] || inv.source}</span>
+      <span class="invest-cell ta-r">${inv.gram} g</span>
+      <span class="invest-cell ta-r">${fmtD(inv.price)} TL/g</span>
+      <span class="invest-cell ta-r">${fmt(inv.total)} TL</span>
+      <button class="invest-del" onclick="deleteInvestment('${inv.id}')" title="Sil">✕</button>
+    </div>
+  `).join('');
+}
+
+// Tarayıcı/şifre yöneticisi otomatik doldurma ile bu alanlara sayısal
+// olmayan bir değer (ör. e-posta) yerleştirirse temizle. Hangi tarayıcı
+// veya eklenti olursa olsun çalışır — otomatik doldurmanın kendisini
+// engellemeye çalışmak yerine sonucunu doğrular.
+function sanitizeInvestFields(){
+  ['invGram','invPrice'].forEach(id=>{
+    const el = document.getElementById(id);
+    if(el && el.value !== '' && isNaN(parseFloat(el.value))) el.value = '';
+  });
 }
 
 // ── BOOT ────────────────────────────────────────────────
 let _data = [];
 let chart = null;
+let investChart = null;
 
 async function boot(){
-  const inv = loadInvestment();
-  if(inv){
-    document.getElementById('invDate').value = inv.date;
-    document.getElementById('invGram').value = inv.gram;
-    document.getElementById('invPrice').value = inv.price;
-    document.getElementById('invSource').value = inv.source;
-  } else {
-    document.getElementById('invDate').value = today;
-  }
+  document.getElementById('invDate').value = today;
+  sanitizeInvestFields();
+  [200, 600, 1200, 2500].forEach(ms => setTimeout(sanitizeInvestFields, ms));
+  ['invGram','invPrice'].forEach(id=>{
+    document.getElementById(id).addEventListener('blur', sanitizeInvestFields);
+  });
 
   try {
     const r = await fetch(DATA_FILE + '?t=' + Date.now());
@@ -465,49 +549,65 @@ function getMissingWorkdays(fromDate, toDate){
 // ── RENDER ──────────────────────────────────────────────
 function render(){
   renderMetrics();
+  renderInvestList();
   renderTable();
   renderChart();
+  renderInvestChart();
 }
 
 function renderMetrics(){
   const grid = document.getElementById('metricsGrid');
   grid.innerHTML = '';
-  const inv = loadInvestment();
+  const list = loadInvestments();
   const last = _data.length ? _data[_data.length-1] : null;
-  const values = [];
 
   SOURCES.forEach(s=>{
     const price = last ? last[s.key+'_satis'] : null;
-    let pl = null, plPct = null, value = null;
-    if(inv && price != null){
-      value = price * inv.gram;
-      pl = value - inv.total;
-      plPct = pl / inv.total * 100;
-      values.push(value);
+    const matching = list.filter(x => x.source === s.key);
+    let pl = null, plPct = null, value = null, cost = null, gramSum = null;
+    if(matching.length){
+      gramSum = matching.reduce((a,b)=>a+b.gram, 0);
+      cost = matching.reduce((a,b)=>a+b.total, 0);
+      if(price != null){
+        value = price * gramSum;
+        pl = value - cost;
+        plPct = pl / cost * 100;
+      }
     }
     const div = document.createElement('div');
     div.className = 'metric';
     div.style.borderTopColor = s.color;
     const plClass = pl===null ? '' : (pl>0?'pos':(pl<0?'neg':''));
+    const subText = pl!=null
+      ? sign(pl)+fmt(pl)+' TL ('+sign(pl)+plPct.toFixed(2)+'%)'
+      : (matching.length ? 'veri bekleniyor' : 'ilk yatırımı gir');
     div.innerHTML = `
       <div class="lbl">${s.label}</div>
       <div class="val">${price!=null?fmtD(price)+' TL':'— veri yok'}</div>
-      <div class="sub ${plClass}">${pl!=null? sign(pl)+fmt(pl)+' TL ('+sign(pl)+plPct.toFixed(2)+'%)' : (inv?'veri bekleniyor':'ilk yatırımı gir')}</div>
+      <div class="sub ${plClass}">${subText}</div>
+      ${matching.length ? `<div class="sub" style="margin-top:2px;">${gramSum} g · ${matching.length} alım</div>` : ''}
     `;
     grid.appendChild(div);
   });
 
+  let totalCostAll = 0, totalValueAll = 0, missingPrice = false;
+  list.forEach(inv=>{
+    totalCostAll += inv.total;
+    const price = last ? last[inv.source+'_satis'] : null;
+    if(price != null) totalValueAll += price * inv.gram;
+    else missingPrice = true;
+  });
+
   const strip = document.getElementById('overallStrip');
-  if(inv && values.length){
+  if(list.length){
     strip.style.display = 'flex';
-    document.getElementById('totalCost').textContent = fmt(inv.total) + ' TL';
-    const avgValue = values.reduce((a,b)=>a+b,0)/values.length;
-    const avgPnl = avgValue - inv.total;
-    const avgPct = avgPnl/inv.total*100;
-    document.getElementById('avgValue').textContent = fmt(avgValue) + ' TL';
+    document.getElementById('totalCost').textContent = fmt(totalCostAll) + ' TL';
+    document.getElementById('avgValue').textContent = fmt(totalValueAll) + ' TL' + (missingPrice ? '*' : '');
+    const pnl = totalValueAll - totalCostAll;
+    const pct = totalCostAll ? pnl/totalCostAll*100 : 0;
     const el = document.getElementById('avgPnl');
-    el.textContent = sign(avgPnl)+fmt(avgPnl)+' TL ('+sign(avgPnl)+avgPct.toFixed(2)+'%)';
-    el.className = 'val ' + (avgPnl>=0?'pos':'neg');
+    el.textContent = sign(pnl)+fmt(pnl)+' TL ('+sign(pnl)+pct.toFixed(2)+'%)';
+    el.className = 'val ' + (pnl>=0?'pos':'neg');
   } else {
     strip.style.display = 'none';
   }
@@ -555,6 +655,45 @@ function renderChart(){
     options:{
       responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
       plugins:{ legend:{display:false}, tooltip:{ backgroundColor:'#1a2030', borderColor:'#2a3348', borderWidth:1, titleColor:'#9aa5b8', bodyColor:'#e8eaf0', padding:10 } },
+      scales:{
+        x:{ ticks:{maxRotation:45,autoSkip:true,maxTicksLimit:12,font:{size:10},color:'#636b7a'}, grid:{color:'rgba(255,255,255,.04)'} },
+        y:{ ticks:{font:{size:10},color:'#636b7a'}, grid:{color:'rgba(255,255,255,.04)'} }
+      }
+    }
+  });
+}
+
+function renderInvestChart(){
+  const card = document.getElementById('investChartCard');
+  const list = loadInvestments();
+  if(!list.length || !_data.length){
+    card.style.display = 'none';
+    if(investChart){ investChart.destroy(); investChart = null; }
+    return;
+  }
+  card.style.display = '';
+  const labels = _data.map(r=>dd(r.date));
+  const datasets = list.map((inv,i) => ({
+    label: `${dd(inv.date)} · ${SOURCE_LABEL[inv.source] || inv.source} (${inv.gram} g)`,
+    data: _data.map(r => (r.date >= inv.date && r[inv.source+'_satis'] != null) ? r[inv.source+'_satis'] * inv.gram : null),
+    borderColor: invColor(i),
+    backgroundColor: invColor(i),
+    spanGaps: true,
+    tension: 0.3,
+    pointRadius: 2,
+    borderWidth: 2,
+    fill: false,
+  }));
+  if(investChart) investChart.destroy();
+  investChart = new Chart(document.getElementById('investChart').getContext('2d'), {
+    type:'line',
+    data:{ labels, datasets },
+    options:{
+      responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
+      plugins:{
+        legend:{ display:true, position:'bottom', labels:{ color:'#9aa5b8', boxWidth:10, font:{size:10} } },
+        tooltip:{ backgroundColor:'#1a2030', borderColor:'#2a3348', borderWidth:1, titleColor:'#9aa5b8', bodyColor:'#e8eaf0', padding:10 }
+      },
       scales:{
         x:{ ticks:{maxRotation:45,autoSkip:true,maxTicksLimit:12,font:{size:10},color:'#636b7a'}, grid:{color:'rgba(255,255,255,.04)'} },
         y:{ ticks:{font:{size:10},color:'#636b7a'}, grid:{color:'rgba(255,255,255,.04)'} }
