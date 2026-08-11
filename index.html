@@ -1215,7 +1215,7 @@ document.addEventListener('keydown', e => { if (e.key==='Escape') closeModal(); 
     requireAdmin: true,   // bu sayfa (kişisel portföy) sadece admin'e açık
     onReady: (user, admin) => {
       document.getElementById('authGate').style.display = 'none';
-      document.getElementById('page').style.display = '';
+      document.getElementById('page').style.display = 'block';
       document.getElementById('userEmail').textContent = user.email;
       boot(); // veriler yalnızca yetki kontrolünden geçince yüklensin
     }
