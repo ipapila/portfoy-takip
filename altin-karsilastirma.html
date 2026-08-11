@@ -262,8 +262,8 @@
     <input type="password" name="fakepasswordremembered" tabindex="-1" aria-hidden="true" style="position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0;">
     <div class="invest-grid">
       <div class="field"><label>Tarih</label><input type="date" id="invDate" name="invest_date" autocomplete="off"></div>
-      <div class="field"><label>Miktar (gram)</label><input type="number" id="invGram" name="invest_gram" step="0.01" placeholder="örn. 10" autocomplete="off" inputmode="decimal"></div>
-      <div class="field"><label>Alış Fiyatı (TL/gram)</label><input type="number" id="invPrice" name="invest_price" step="0.01" placeholder="örn. 6450" autocomplete="off" inputmode="decimal"></div>
+      <div class="field"><label>Miktar (gram)</label><input type="text" id="invGram" name="invest_gram" placeholder="örn. 10" autocomplete="off" inputmode="decimal" pattern="[0-9]*[.,]?[0-9]*"></div>
+      <div class="field"><label>Alış Fiyatı (TL/gram)</label><input type="text" id="invPrice" name="invest_price" placeholder="örn. 6450" autocomplete="off" inputmode="decimal" pattern="[0-9]*[.,]?[0-9]*"></div>
       <div class="field">
         <label>Alındığı Kaynak</label>
         <select id="invSource" name="invest_source" autocomplete="off">
@@ -420,6 +420,14 @@ const INV_PALETTE = ['#d4a847','#5b8eff','#9c7ef0','#34c78a','#f0a5d8','#f0c360'
 const invColor = i => INV_PALETTE[i % INV_PALETTE.length];
 const SOURCE_LABEL = Object.fromEntries(SOURCES.map(s=>[s.key, s.label]));
 
+// Kullanıcı girişini (nokta veya virgül ondalık ayıracı, boşluk vs.)
+// parseFloat'ın anlayacağı biçime çevirir.
+function parseLocaleNumber(v){
+  if(v == null) return NaN;
+  const cleaned = String(v).trim().replace(',', '.');
+  return parseFloat(cleaned);
+}
+
 function loadInvestments(){
   try{
     const arr = JSON.parse(localStorage.getItem('altin_yatirimlar') || 'null');
@@ -449,8 +457,8 @@ function saveInvestment(){
   const gramEl = document.getElementById('invGram');
   const priceEl = document.getElementById('invPrice');
   const date  = document.getElementById('invDate').value || today;
-  const gram  = parseFloat(gramEl.value);
-  const price = parseFloat(priceEl.value);
+  const gram  = parseLocaleNumber(gramEl.value);
+  const price = parseLocaleNumber(priceEl.value);
   const source= document.getElementById('invSource').value;
   invSaved.classList.remove('invest-note-err');
   if(!gram || gram <= 0 || !price || price <= 0){
@@ -493,11 +501,12 @@ function renderInvestList(){
 // Tarayıcı/şifre yöneticisi otomatik doldurma ile bu alanlara sayısal
 // olmayan bir değer (ör. e-posta) yerleştirirse temizle. Hangi tarayıcı
 // veya eklenti olursa olsun çalışır — otomatik doldurmanın kendisini
-// engellemeye çalışmak yerine sonucunu doğrular.
+// engellemeye çalışmak yerine sonucunu doğrular. Nokta/virgül ondalık
+// ayıracını da destekler.
 function sanitizeInvestFields(){
   ['invGram','invPrice'].forEach(id=>{
     const el = document.getElementById(id);
-    if(el && el.value !== '' && isNaN(parseFloat(el.value))) el.value = '';
+    if(el && el.value !== '' && isNaN(parseLocaleNumber(el.value))) el.value = '';
   });
 }
 
