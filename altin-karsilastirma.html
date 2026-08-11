@@ -91,6 +91,7 @@
   }
   .btn-primary-sm:hover { opacity:.85; }
   .invest-note { font-size:11.5px; color:var(--muted); }
+  .invest-note-err { color:var(--red); font-weight:500; }
 
   .invest-list { margin-top:16px; border-top:1px solid var(--border); padding-top:12px; }
   .invest-empty { font-size:12px; color:var(--muted); padding:6px 2px; }
@@ -440,17 +441,30 @@ function saveInvestments(list){
   localStorage.setItem('altin_yatirimlar', JSON.stringify(list));
 }
 function saveInvestment(){
+  // Tıklama anında da otomatik doldurmanın alanlara bıraktığı sayısal
+  // olmayan değerleri temizle — blur/timer tabanlı temizlik butona
+  // basılma anıyla çakışmayabiliyor, bu yüzden burada tekrar kontrol ediyoruz.
+  sanitizeInvestFields();
+  const invSaved = document.getElementById('invSaved');
+  const gramEl = document.getElementById('invGram');
+  const priceEl = document.getElementById('invPrice');
   const date  = document.getElementById('invDate').value || today;
-  const gram  = parseFloat(document.getElementById('invGram').value);
-  const price = parseFloat(document.getElementById('invPrice').value);
+  const gram  = parseFloat(gramEl.value);
+  const price = parseFloat(priceEl.value);
   const source= document.getElementById('invSource').value;
-  if(!gram || !price){ document.getElementById('invSaved').textContent = 'Lütfen gram ve fiyat gir.'; return; }
+  invSaved.classList.remove('invest-note-err');
+  if(!gram || gram <= 0 || !price || price <= 0){
+    invSaved.textContent = '⚠ Gram ve fiyat alanları boş veya geçersiz görünüyor — otomatik doldurma bir şeyleri bozmuş olabilir, lütfen alanlara tekrar bakıp tekrar deneyin.';
+    invSaved.classList.add('invest-note-err');
+    (gram ? priceEl : gramEl).focus();
+    return;
+  }
   const list = loadInvestments();
   list.push({ id: Date.now()+'_'+Math.random().toString(36).slice(2,7), date, gram, price, source, total: gram*price });
   saveInvestments(list);
-  document.getElementById('invSaved').textContent = 'Eklendi ✓';
-  document.getElementById('invGram').value = '';
-  document.getElementById('invPrice').value = '';
+  invSaved.textContent = 'Eklendi ✓';
+  gramEl.value = '';
+  priceEl.value = '';
   document.getElementById('invDate').value = today;
   render();
 }
@@ -497,7 +511,13 @@ async function boot(){
   sanitizeInvestFields();
   [200, 600, 1200, 2500].forEach(ms => setTimeout(sanitizeInvestFields, ms));
   ['invGram','invPrice'].forEach(id=>{
-    document.getElementById(id).addEventListener('blur', sanitizeInvestFields);
+    const el = document.getElementById(id);
+    el.addEventListener('blur', sanitizeInvestFields);
+    el.addEventListener('input', () => {
+      const note = document.getElementById('invSaved');
+      note.textContent = '';
+      note.classList.remove('invest-note-err');
+    });
   });
 
   try {
