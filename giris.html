@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Giriş — Portföy Takip</title>
+<style>
+  :root {
+    --bg:        #0d0f12;
+    --surface:   #13171c;
+    --border:    #1f252e;
+    --border2:   #252c37;
+    --text:      #e8eaf0;
+    --muted:     #636b7a;
+    --c2:        #5b8eff;
+    --red:       #f06060;
+    --red-bg:    rgba(240,96,96,.1);
+    --green:     #34c78a;
+    --green-bg:  rgba(52,199,138,.1);
+    --radius:    10px;
+    --font:      'Inter', system-ui, -apple-system, sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text); font-family: var(--font);
+    min-height: 100vh; display:flex; align-items:center; justify-content:center;
+    padding: 20px; -webkit-font-smoothing: antialiased;
+  }
+  .card {
+    width:100%; max-width:380px; background:var(--surface); border:1px solid var(--border);
+    border-radius:var(--radius); padding:28px;
+  }
+  h1 { font-size:18px; font-weight:600; margin-bottom:4px; letter-spacing:-.3px; }
+  .sub { font-size:12.5px; color:var(--muted); margin-bottom:22px; }
+  .field { margin-bottom:14px; }
+  .field label { display:block; font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; margin-bottom:5px; }
+  .field input {
+    width:100%; background:#0d0f12; border:1px solid var(--border2); border-radius:7px;
+    color:var(--text); font-family:var(--font); font-size:13px; padding:10px 12px; outline:none;
+  }
+  .field input:focus { border-color: var(--c2); }
+  .btn-primary {
+    width:100%; padding:11px; border-radius:8px; border:none; background:var(--c2); color:#fff;
+    font-family:var(--font); font-size:13.5px; font-weight:500; cursor:pointer; margin-top:6px;
+  }
+  .btn-primary:hover:not(:disabled) { opacity:.85; }
+  .btn-primary:disabled { opacity:.5; cursor:not-allowed; }
+  .btn-link {
+    width:100%; background:none; border:none; color:var(--muted); font-family:var(--font);
+    font-size:12.5px; cursor:pointer; margin-top:14px; text-align:center; text-decoration:underline;
+  }
+  .btn-link:hover { color:var(--text); }
+  .alert {
+    display:none; padding:10px 14px; border-radius:8px; font-size:12px; line-height:1.5; margin-top:14px;
+  }
+  .alert.show { display:block; }
+  .alert-err { background:var(--red-bg); border:1px solid rgba(240,96,96,.3); color:var(--red); }
+  .alert-ok  { background:var(--green-bg); border:1px solid rgba(52,199,138,.3); color:var(--green); }
+  .mode-label { font-size:11px; color:var(--muted); text-align:center; margin-top:2px; }
+</style>
+</head>
+<body>
+
+<div class="card">
+  <h1 id="formTitle">Giriş Yap</h1>
+  <div class="sub" id="formSub">Hesabınla giriş yap.</div>
+
+  <div class="field">
+    <label>E-posta</label>
+    <input type="email" id="email" placeholder="ornek@eposta.com" autocomplete="email">
+  </div>
+  <div class="field">
+    <label>Şifre</label>
+    <input type="password" id="password" placeholder="••••••••" autocomplete="current-password">
+  </div>
+  <div class="field" id="passwordConfirmField" style="display:none">
+    <label>Şifre (Tekrar)</label>
+    <input type="password" id="passwordConfirm" placeholder="••••••••" autocomplete="new-password">
+  </div>
+
+  <button class="btn-primary" id="submitBtn" onclick="handleSubmit()">Giriş Yap</button>
+  <button class="btn-link" id="toggleModeBtn" onclick="toggleMode()">Hesabın yok mu? Üye Ol</button>
+
+  <div class="alert alert-err" id="errBox"></div>
+  <div class="alert alert-ok" id="okBox"></div>
+</div>
+
+<script type="module">
+  import { login, register } from './js/auth.js';
+
+  let mode = 'login'; // 'login' | 'register'
+
+  window.toggleMode = function () {
+    mode = mode === 'login' ? 'register' : 'login';
+    const isRegister = mode === 'register';
+    document.getElementById('formTitle').textContent = isRegister ? 'Üye Ol' : 'Giriş Yap';
+    document.getElementById('formSub').textContent = isRegister
+      ? 'Yeni bir hesap oluştur.'
+      : 'Hesabınla giriş yap.';
+    document.getElementById('submitBtn').textContent = isRegister ? 'Üye Ol' : 'Giriş Yap';
+    document.getElementById('toggleModeBtn').textContent = isRegister
+      ? 'Zaten hesabın var mı? Giriş Yap'
+      : 'Hesabın yok mu? Üye Ol';
+    document.getElementById('passwordConfirmField').style.display = isRegister ? '' : 'none';
+    hideAlerts();
+  };
+
+  function hideAlerts() {
+    document.getElementById('errBox').classList.remove('show');
+    document.getElementById('okBox').classList.remove('show');
+  }
+  function showErr(msg) {
+    const el = document.getElementById('errBox');
+    el.textContent = msg;
+    el.classList.add('show');
+  }
+  function showOk(msg) {
+    const el = document.getElementById('okBox');
+    el.textContent = msg;
+    el.classList.add('show');
+  }
+
+  window.handleSubmit = async function () {
+    hideAlerts();
+    const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+    const btn = document.getElementById('submitBtn');
+
+    if (!email || !password) return showErr('E-posta ve şifre gerekli.');
+
+    if (mode === 'register') {
+      const confirm = document.getElementById('passwordConfirm').value;
+      if (password.length < 6) return showErr('Şifre en az 6 karakter olmalı.');
+      if (password !== confirm) return showErr('Şifreler eşleşmiyor.');
+    }
+
+    btn.disabled = true;
+    try {
+      if (mode === 'register') {
+        await register(email, password);
+        showOk('Hesap oluşturuldu! Yönlendiriliyorsun...');
+      } else {
+        await login(email, password);
+        showOk('Giriş başarılı! Yönlendiriliyorsun...');
+      }
+      // Yeni üyeler varsayılan olarak 'user' rolüyle oluşturulur ve
+      // sadece altin-karsilastirma.html sayfasına erişebilir (auth.js → guardPage).
+      setTimeout(() => { window.location.href = 'altin-karsilastirma.html'; }, 600);
+    } catch (e) {
+      btn.disabled = false;
+      showErr(firebaseErrToTr(e.code || e.message));
+    }
+  };
+
+  function firebaseErrToTr(code) {
+    const map = {
+      'auth/email-already-in-use': 'Bu e-posta zaten kayıtlı.',
+      'auth/invalid-email': 'Geçersiz e-posta adresi.',
+      'auth/weak-password': 'Şifre çok zayıf (en az 6 karakter).',
+      'auth/user-not-found': 'Kullanıcı bulunamadı.',
+      'auth/wrong-password': 'Şifre hatalı.',
+      'auth/invalid-credential': 'E-posta veya şifre hatalı.',
+      'auth/too-many-requests': 'Çok fazla deneme yapıldı, biraz sonra tekrar dene.',
+    };
+    return map[code] || ('Bir hata oluştu: ' + code);
+  }
+</script>
+</body>
+</html>
