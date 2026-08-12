@@ -125,22 +125,14 @@ def fetch_direct_pair(url, min_spread, max_spread, label):
             log(f"  ✅ {label} (direkt HTTP, alış/satış): {alis} / {satis}")
             return {"alis": round(alis, 2), "satis": round(satis, 2), "kaynak": f"{label} (direkt HTTP)"}
 
-    # yedek: sayfa genelinde makul aralıkta iki sayı ara
-    nums = []
-    for mm in re.finditer(r'\b[3-9]\d{3}[.,]\d{1,4}\b|\b1\d{4}[.,]\d{1,4}\b', text):
-        try:
-            v = parse_tr_number(mm.group())
-            if GOLD_MIN <= v <= GOLD_MAX:
-                nums.append(v)
-        except Exception:
-            pass
-    nums = sorted(set(nums))
-    pairs = [(a, b) for a in nums for b in nums if b > a and min_spread <= (b - a) / a <= max_spread]
-    if pairs:
-        alis, satis = pairs[0]
-        log(f"  ✅ {label} (direkt HTTP, metin tarama): {alis} / {satis}")
-        return {"alis": round(alis, 2), "satis": round(satis, 2), "kaynak": f"{label} (direkt HTTP, metin)"}
-
+    # Not: Eskiden burada "sayfa genelinde makul aralıkta iki sayı ara" adlı
+    # bir yedek yöntem vardı. O yöntem, birincil regex eşleşmediğinde sayfadaki
+    # HERHANGİ İKİ uyumlu sayıyı (gram altınla ilgisiz olabilecek gümüş,
+    # çeyrek altın, geçmiş tarihli veri vb. dahil) yanlışlıkla alış/satış
+    # çifti sanıp kabul ediyordu — bu, Garanti Bankası'nda günlerce tutarlı
+    # biçimde yanlış (~%35 sapmalı) bir fiyatın kaydedilmesine yol açtı.
+    # Güvenilirlik için kaldırıldı: birincil regex tutmazsa doğrudan Claude
+    # web search fallback'ine geçiyoruz (bkz. get_bank_gold).
     raise RuntimeError(f"{label}: sayfadan makul alış/satış çifti çıkarılamadı")
 
 
@@ -206,15 +198,37 @@ def fetch_bank_gold_web(bank_name, hint_urls, min_spread=BANK_MIN_SPREAD, max_sp
     }
 
 
-def get_bank_gold(bank_name, direct_urls, min_spread=BANK_MIN_SPREAD, max_spread=BANK_MAX_SPREAD):
+REF_TOLERANCE = 0.20  # bir bankanın satış fiyatı, referans (serbest piyasa) fiyatından en fazla ±%20 sapabilir
+
+def plausible(result, ref_price, label):
+    """Sonucu (varsa) referans fiyatla kıyaslar; aşırı sapan sonuçları eler."""
+    if result is None or ref_price is None:
+        return result
+    satis = result["satis"]
+    dev = abs(satis - ref_price) / ref_price
+    if dev > REF_TOLERANCE:
+        log(f"  ⚠  {label}: {satis} referans fiyattan (~{round(ref_price,2)}) %{dev*100:.0f} sapıyor — mantıksız, reddedildi")
+        return None
+    return result
+
+def get_bank_gold(bank_name, direct_urls, min_spread=BANK_MIN_SPREAD, max_spread=BANK_MAX_SPREAD, ref_price=None):
     try:
-        return fetch_bank_gold_direct(direct_urls, bank_name, min_spread, max_spread)
+        result = fetch_bank_gold_direct(direct_urls, bank_name, min_spread, max_spread)
+        checked = plausible(result, ref_price, bank_name)
+        if checked:
+            return checked
+        if result and not checked:
+            raise RuntimeError("çapraz doğrulamayı geçemedi")
     except Exception as e:
         log(f"  ⚠  {bank_name} doğrudan HTTP tamamen başarısız: {e} — Claude'a geçiliyor")
     try:
         result = fetch_bank_gold_web(bank_name, direct_urls, min_spread, max_spread)
-        log(f"  ✅ {bank_name} (Claude): alış={result['alis']} satış={result['satis']}")
-        return result
+        checked = plausible(result, ref_price, bank_name)
+        if checked:
+            log(f"  ✅ {bank_name} (Claude): alış={checked['alis']} satış={checked['satis']}")
+            return checked
+        log(f"  ❌ {bank_name}: Claude sonucu da referanstan aşırı sapıyor, reddedildi")
+        return None
     except Exception as e:
         log(f"  ❌ {bank_name}: Claude de başarısız: {e}")
         return None
@@ -222,16 +236,17 @@ def get_bank_gold(bank_name, direct_urls, min_spread=BANK_MIN_SPREAD, max_spread
 
 # ── KAYNAK TANIMLARI ─────────────────────────────────────────────────────
 
-def get_garanti():
+def get_garanti(ref_price=None):
     return get_bank_gold(
         "Garanti BBVA",
         [
             "https://altin.doviz.com/garanti-bbva/gram-altin",
             "https://canlialtinfiyatlari.com/banka/garanti-bankasi.html",
         ],
+        ref_price=ref_price,
     )
 
-def get_yapikredi():
+def get_yapikredi(ref_price=None):
     return get_bank_gold(
         "Yapı Kredi Bankası",
         [
@@ -239,6 +254,7 @@ def get_yapikredi():
             "https://altin.doviz.com/yapikredi/gram-altin",
             "https://canlialtinfiyatlari.com/banka/yapi-kredi-bankasi.html",
         ],
+        ref_price=ref_price,
     )
 
 def get_merkez():
@@ -324,9 +340,10 @@ def get_serbest():
 
 
 # ── KAYDET ───────────────────────────────────────────────────────────────
-
-SOURCES = [("garanti", get_garanti), ("yapikredi", get_yapikredi),
-           ("merkez", get_merkez), ("serbest", get_serbest)]
+# Not: serbest piyasa fiyatı ÖNCE çekilir; diğer üç kaynağın sonucu bu
+# fiyata göre makul bir toleransla (±%20) çapraz doğrulanır. Bu, bir
+# kaynağın scraping hatası sonucu tamamen alakasız bir rakam (gümüş,
+# çeyrek altın, geçmiş veri vb.) yakalayıp sessizce kaydedilmesini önler.
 
 def run():
     records = load_json(OUT_FILE)
@@ -334,7 +351,19 @@ def run():
 
     entry = {"date": TODAY}
     any_ok = False
-    for key, fn in SOURCES:
+
+    serbest_result = get_serbest()
+    ref_price = serbest_result["satis"] if serbest_result else \
+        (prev.get("serbest_satis") if prev else None)  # bugün çekilemezse dünkü fiyatı referans al
+
+    ordered = [
+        ("serbest",   lambda: serbest_result),
+        ("garanti",   lambda: get_garanti(ref_price=ref_price)),
+        ("yapikredi", lambda: get_yapikredi(ref_price=ref_price)),
+        ("merkez",    get_merkez),  # TCMB tek referans fiyat; farklı bir mantıkla çalışıyor, çapraz doğrulanmıyor
+    ]
+
+    for key, fn in ordered:
         result = fn()
         if result:
             entry[f"{key}_alis"]   = result["alis"]
@@ -355,10 +384,12 @@ def run():
         log("  ❌ Dört kaynağın hiçbiri çekilemedi, kayıt atlanıyor.")
         return
 
+    SOURCE_KEYS = ["garanti", "yapikredi", "merkez", "serbest"]
+
     # manuel düzeltme korunuyor mu?
-    if prev and any(str(prev.get(f"{k}_kaynak", "")).endswith("(manuel)") for k, _ in SOURCES):
+    if prev and any(str(prev.get(f"{k}_kaynak", "")).endswith("(manuel)") for k in SOURCE_KEYS):
         log("  ℹ  Bugün için manuel kayıt var, otomatik veri üzerine yazılmıyor.")
-        for k, _ in SOURCES:
+        for k in SOURCE_KEYS:
             if str(prev.get(f"{k}_kaynak", "")).endswith("(manuel)"):
                 entry[f"{k}_alis"]   = prev.get(f"{k}_alis")
                 entry[f"{k}_satis"]  = prev.get(f"{k}_satis")
@@ -366,7 +397,7 @@ def run():
 
     action = upsert(records, entry)
     save_json(OUT_FILE, records)
-    ozet = " | ".join(f"{k}={entry.get(k+'_satis')}" for k, _ in SOURCES)
+    ozet = " | ".join(f"{k}={entry.get(k+'_satis')}" for k in SOURCE_KEYS)
     log(f"  💾 {action}: {ozet}")
 
 
