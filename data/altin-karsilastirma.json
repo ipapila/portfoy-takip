@@ -16,17 +16,17 @@
   },
   {
     "date": "2026-08-12",
-    "garanti_alis": 4368.7,
-    "garanti_satis": 4414.12,
-    "garanti_kaynak": "Garanti BBVA (direkt HTTP, metin)",
-    "yapikredi_alis": 6543.64,
-    "yapikredi_satis": 6911.6,
+    "serbest_alis": 6754.55,
+    "serbest_satis": 6755.38,
+    "serbest_kaynak": "Serbest Piyasa (genel gram altın) (direkt HTTP)",
+    "garanti_alis": 6615.87,
+    "garanti_satis": 6860.76,
+    "garanti_kaynak": "Garanti BBVA (direkt HTTP)",
+    "yapikredi_alis": 6639.45,
+    "yapikredi_satis": 6841.86,
     "yapikredi_kaynak": "Yapı Kredi Bankası (direkt HTTP)",
-    "merkez_alis": 6686.33,
-    "merkez_satis": 6686.33,
-    "merkez_kaynak": "TCMB saat başı altın fiyatı (direkt HTTP)",
-    "serbest_alis": 6757.35,
-    "serbest_satis": 6758.26,
-    "serbest_kaynak": "Serbest Piyasa (genel gram altın) (direkt HTTP)"
+    "merkez_alis": 6765.72,
+    "merkez_satis": 6765.72,
+    "merkez_kaynak": "Claude web search"
   }
 ]
