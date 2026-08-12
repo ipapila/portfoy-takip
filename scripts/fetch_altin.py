@@ -179,10 +179,10 @@ def claude_search(prompt):
     return " ".join(b["text"] for b in data.get("content", []) if b.get("type") == "text")
 
 def extract_json(text):
-    m = re.search(r'\{[^}]+\}', text)
-    if not m:
+    matches = re.findall(r'\{[^{}]+\}', text)
+    if not matches:
         raise ValueError(f"JSON bulunamadı: {text[:300]}")
-    return json.loads(m.group())
+    return json.loads(matches[-1])  # metinde ek açıklama varsa bile en sonuncu JSON bloğunu al
 
 def fetch_bank_gold_web(bank_name, hint_urls, min_spread=BANK_MIN_SPREAD, max_spread=BANK_MAX_SPREAD):
     ts = int(time.time())
@@ -287,14 +287,20 @@ def get_merkez():
             f"Bugünün tarihi {TODAY}, Unix timestamp {ts}. "
             "TCMB'nin (Türkiye Cumhuriyet Merkez Bankası) BUGÜN "
             f"({TODAY}) saat başı (10:00-15:00 arası) yayınladığı "
-            "GRAM ALTIN (XAU, 995/1000 ayar) referans fiyatını TL cinsinden bul "
-            "(tcmb.gov.tr 'Saat Başı Belirlenen Döviz Kurları ve Altın Fiyatları' "
-            "sayfası, ya da anlikaltinfiyatlari.com/altin/merkez-bankasi). "
-            "Günün en son yayınlanan saatindeki değeri kullan. "
+            "GRAM ALTIN (XAU, 995/1000 ayar) referans fiyatını TL cinsinden bul. "
+            "Şu sayfaları kontrol et: "
+            "1) anlikaltinfiyatlari.com/altin/merkez-bankasi "
+            "2) tcmb.gov.tr 'Saat Başı Belirlenen Döviz Kurları ve Altın Fiyatları' sayfası "
+            "3) canlialtinfiyatlari.com veya benzeri bir kaynakta 'merkez bankası altın' araması. "
+            "Günün en son yayınlanan saatindeki değeri kullan; TCMB bugün için henüz "
+            "yayınlamamışsa dünkü (bir önceki iş günü) değeri kullan. "
             "TCMB bu veriyi tek bir referans fiyat olarak yayınlar, alış/satış "
             "makası yoktur — aynı sayıyı hem alış hem satış olarak döndür. "
+            "ÇOK ÖNEMLİ: Kesin doğrulayamasan bile arama sonuçlarında gördüğün EN "
+            "MAKUL rakamı kullan — asla açıklama, özür veya gerekçe yazma, sadece "
+            "aşağıdaki JSON'u döndür. Hiçbir şekilde düz metin yanıt verme. "
             'Sonucu YALNIZCA şu JSON formatında döndür: {"alis": <sayi>, "satis": <sayi>} '
-            "(iki değer de aynı olmalı). Ondalık için nokta kullan."
+            "(iki değer de aynı olmalı). Ondalık için nokta kullan. Başka hiçbir metin ekleme."
         )
         d = extract_json(claude_search(prompt))
         v = round(float(d.get("satis") or d.get("alis")), 2)
