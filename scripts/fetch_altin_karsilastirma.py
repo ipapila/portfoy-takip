@@ -16,9 +16,9 @@ Gram Altın Karşılaştırma — günlük fiyat çekme scripti.
        şekilde arar.
 
   Merkez Bankası için TCMB'nin herhangi bir bayi alış/satış makası
-  yoktur — tek bir resmi referans kuru vardır (XAU çapraz kurundan
-  gram'a çevrilir). Bu yüzden merkez_alis == merkez_satis olarak
-  kaydedilir; bu kasıtlıdır, hata değildir.
+  yoktur — tek bir resmi referans kuru vardır (saat başı yayınlanan
+  XAU 995/1000 gram altın fiyatı). Bu yüzden merkez_alis == merkez_satis
+  olarak kaydedilir; bu kasıtlıdır, hata değildir.
 
   NOT (kaynak doğrulaması — İlk kurulumda mutlaka kontrol edin):
   Yapı Kredi ve Garanti için doviz.com/canlialtinfiyatlari URL slug'ları
@@ -179,10 +179,10 @@ def claude_search(prompt):
     return " ".join(b["text"] for b in data.get("content", []) if b.get("type") == "text")
 
 def extract_json(text):
-    m = re.search(r'\{[^}]+\}', text)
-    if not m:
+    matches = re.findall(r'\{[^{}]+\}', text)
+    if not matches:
         raise ValueError(f"JSON bulunamadı: {text[:300]}")
-    return json.loads(m.group())
+    return json.loads(matches[-1])  # metinde ek açıklama varsa bile en sonuncu JSON bloğunu al
 
 def fetch_bank_gold_web(bank_name, hint_urls, min_spread=BANK_MIN_SPREAD, max_spread=BANK_MAX_SPREAD):
     ts = int(time.time())
@@ -242,33 +242,65 @@ def get_yapikredi():
     )
 
 def get_merkez():
-    """TCMB — tek referans kur (bayi alış/satış makası yok)."""
+    """TCMB — saat başı yayınlanan resmi gram altın (XAU 995/1000) fiyatı.
+
+    ÖNEMLİ: TCMB'nin kurlar/today.xml dosyası SADECE döviz kurlarını içerir,
+    altın (XAU/XAS) hiç yayınlanmaz — o yüzden eski sürüm bu dosyada XAU
+    arayıp her seferinde başarısız oluyordu. TCMB altını ayrı bir sayfada,
+    "Saat Başı Belirlenen Döviz Kurları ve Altın Fiyatları" başlığı altında,
+    hafta içi 10:00-15:00 arası saat başı yayınlıyor. Bu veri TEK bir
+    referans fiyattır — bayi alış/satış makası yoktur — bu yüzden
+    merkez_alis == merkez_satis olması kasıtlıdır, hata değildir.
+    """
     try:
-        url = "https://www.tcmb.gov.tr/kurlar/today.xml"
+        url = "https://anlikaltinfiyatlari.com/altin/merkez-bankasi"
         raw = http_get(url, timeout=15)
-        root = ET.fromstring(raw)
-        for cur in root.findall("Currency"):
-            if cur.get("CurrencyCode") == "XAU":
-                satis = float(cur.findtext("ForexSelling") or cur.findtext("BanknoteSelling") or 0)
-                if satis > 50000:  # ons ise grama çevir
-                    satis = satis / 31.1035
-                satis = round(satis, 2)
-                validate(satis, GOLD_MIN, GOLD_MAX, "TCMB Merkez Bankası")
-                log(f"  ✅ Merkez Bankası (TCMB XML): {satis}")
-                return {"alis": satis, "satis": satis, "kaynak": "TCMB XML"}
-        raise RuntimeError("TCMB XML'de XAU kodu yok")
+        text = strip_html(raw)
+        # "Gram Altın (XAU) 995/1000  -  6686.33  -  -  -  -" tipi satırı bul,
+        # saat başı hücrelerindeki (10:00→15:00) son DOLU değeri al —
+        # günün en son yayınlanan saatidir.
+        m = re.search(r"Gram\s*Alt[ıi]n\s*\(?XAU\)?\s*995\s*/\s*1000\s*((?:[-\d.,]+\s+){1,8})", text, re.I)
+        if not m:
+            raise RuntimeError("sayfada XAU 995/1000 saat başı satırı bulunamadı")
+        tokens = m.group(1).split()
+        nums = []
+        for t in tokens:
+            if t == "-" or not re.match(r'^[\d.,]+$', t):
+                continue
+            try:
+                v = parse_tr_number(t)
+                if GOLD_MIN <= v <= GOLD_MAX:
+                    nums.append(v)
+            except Exception:
+                pass
+        if not nums:
+            raise RuntimeError("satırda geçerli bir sayısal değer yok (bugün henüz yayınlanmamış olabilir)")
+        satis = round(nums[-1], 2)  # günün en son yayınlanan saat değeri
+        validate(satis, GOLD_MIN, GOLD_MAX, "TCMB Merkez Bankası (saat başı)")
+        log(f"  ✅ Merkez Bankası (TCMB saat başı, direkt HTTP): {satis}")
+        return {"alis": satis, "satis": satis, "kaynak": "TCMB saat başı altın fiyatı (direkt HTTP)"}
     except Exception as e:
-        log(f"  ⚠  Merkez Bankası TCMB XML başarısız: {e} — Claude'a geçiliyor")
+        log(f"  ⚠  Merkez Bankası doğrudan kaynak başarısız: {e} — Claude'a geçiliyor")
     try:
         ts = int(time.time())
         prompt = (
             f"Bugünün tarihi {TODAY}, Unix timestamp {ts}. "
-            f"Türkiye Cumhuriyet Merkez Bankası'nın (TCMB) BUGÜN ({TODAY}) yayınladığı "
-            "gram altın (has altın / XAU) referans fiyatını TL cinsinden bul "
-            "(tcmb.gov.tr veya EVDS üzerinden). Tek bir referans fiyattır, alış/satış "
+            "TCMB'nin (Türkiye Cumhuriyet Merkez Bankası) BUGÜN "
+            f"({TODAY}) saat başı (10:00-15:00 arası) yayınladığı "
+            "GRAM ALTIN (XAU, 995/1000 ayar) referans fiyatını TL cinsinden bul. "
+            "Şu sayfaları kontrol et: "
+            "1) anlikaltinfiyatlari.com/altin/merkez-bankasi "
+            "2) tcmb.gov.tr 'Saat Başı Belirlenen Döviz Kurları ve Altın Fiyatları' sayfası "
+            "3) canlialtinfiyatlari.com veya benzeri bir kaynakta 'merkez bankası altın' araması. "
+            "Günün en son yayınlanan saatindeki değeri kullan; TCMB bugün için henüz "
+            "yayınlamamışsa dünkü (bir önceki iş günü) değeri kullan. "
+            "TCMB bu veriyi tek bir referans fiyat olarak yayınlar, alış/satış "
             "makası yoktur — aynı sayıyı hem alış hem satış olarak döndür. "
+            "ÇOK ÖNEMLİ: Kesin doğrulayamasan bile arama sonuçlarında gördüğün EN "
+            "MAKUL rakamı kullan — asla açıklama, özür veya gerekçe yazma, sadece "
+            "aşağıdaki JSON'u döndür. Hiçbir şekilde düz metin yanıt verme. "
             'Sonucu YALNIZCA şu JSON formatında döndür: {"alis": <sayi>, "satis": <sayi>} '
-            "(iki değer de aynı olmalı). Ondalık için nokta kullan."
+            "(iki değer de aynı olmalı). Ondalık için nokta kullan. Başka hiçbir metin ekleme."
         )
         d = extract_json(claude_search(prompt))
         v = round(float(d.get("satis") or d.get("alis")), 2)
