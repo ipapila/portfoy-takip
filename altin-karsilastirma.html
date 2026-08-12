@@ -121,6 +121,9 @@
   .metric { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:14px 16px; border-top:2px solid var(--c); }
   .metric .lbl { font-size:11px; color:var(--muted); letter-spacing:.5px; text-transform:uppercase; margin-bottom:6px; }
   .metric .val { font-size:19px; font-weight:600; letter-spacing:-.4px; color:var(--text); line-height:1; }
+  .metric .val-pair { display:flex; flex-direction:column; gap:2px; line-height:1.2; }
+  .metric .val-pair .val-satis { font-size:17px; font-weight:600; letter-spacing:-.3px; color:var(--text); }
+  .metric .val-pair .val-alis { font-size:12px; font-weight:500; color:var(--muted); }
   .metric .sub { font-size:11px; color:var(--muted); margin-top:6px; }
   .pos { color:var(--green) !important; }
   .neg { color:var(--red)   !important; }
@@ -138,6 +141,8 @@
   .legend { display:flex; gap:14px; flex-wrap:wrap; }
   .leg-item { display:flex; align-items:center; gap:5px; font-size:11px; color:var(--muted); }
   .leg-dot { width:8px; height:8px; border-radius:2px; }
+  .leg-line { width:16px; height:0; border-top:2px solid var(--muted); display:inline-block; }
+  .leg-line-dash { border-top-style:dashed; }
   .chart-wrap { position:relative; height:280px; }
 
   .tbl-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; }
@@ -149,11 +154,14 @@
   .tbl-toggle:hover { color:var(--text); background:rgba(255,255,255,.02); }
   .tbl-rows-extra { display:none; }
   .tbl-rows-extra.open { display:block; }
-  .tbl-head { display:grid; grid-template-columns:1.1fr 1fr 1fr 1fr 1fr; padding:10px 16px; border-bottom:1px solid var(--border); font-size:11px; color:var(--muted); font-weight:500; letter-spacing:.4px; text-transform:uppercase; }
-  .tbl-row  { display:grid; grid-template-columns:1.1fr 1fr 1fr 1fr 1fr; padding:9px 16px; border-bottom:1px solid var(--border); font-size:13px; align-items:center; }
+  .tbl-head { display:grid; grid-template-columns:1fr 1.1fr 1.1fr 1.1fr 1.1fr; padding:10px 16px; border-bottom:1px solid var(--border); font-size:11px; color:var(--muted); font-weight:500; letter-spacing:.4px; text-transform:uppercase; }
+  .tbl-row  { display:grid; grid-template-columns:1fr 1.1fr 1.1fr 1.1fr 1.1fr; padding:9px 16px; border-bottom:1px solid var(--border); font-size:13px; align-items:center; }
   .tbl-row:last-child { border-bottom:none; }
   .tbl-row:hover { background:rgba(255,255,255,.03); }
   .ta-r { text-align:right; }
+  .cell-pair { display:flex; flex-direction:column; line-height:1.3; }
+  .cell-pair .cell-satis { font-size:13px; color:var(--text); }
+  .cell-pair .cell-alis { font-size:10.5px; color:var(--muted); }
 
   .footer { margin-top:44px; padding-top:20px; border-top:1px solid var(--border); font-size:12px; color:var(--muted); display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px; }
   .footer a { color:var(--muted); text-decoration:none; }
@@ -300,6 +308,8 @@
         <span class="leg-item"><span class="leg-dot" style="background:var(--c2)"></span>Yapı Kredi</span>
         <span class="leg-item"><span class="leg-dot" style="background:var(--c3)"></span>Merkez Bankası</span>
         <span class="leg-item"><span class="leg-dot" style="background:var(--c4)"></span>Serbest Piyasa</span>
+        <span class="leg-item"><span class="leg-line leg-line-solid"></span>Satış</span>
+        <span class="leg-item"><span class="leg-line leg-line-dash"></span>Alış</span>
       </div>
     </div>
     <div class="chart-wrap"><canvas id="priceChart"></canvas></div>
@@ -591,7 +601,8 @@ function renderMetrics(){
   const last = _data.length ? _data[_data.length-1] : null;
 
   SOURCES.forEach(s=>{
-    const price = last ? last[s.key+'_satis'] : null;
+    const alis  = last ? last[s.key+'_alis']  : null;
+    const price = last ? last[s.key+'_satis'] : null; // kar/zarar satış fiyatı üzerinden
     const matching = list.filter(x => x.source === s.key);
     let pl = null, plPct = null, value = null, cost = null, gramSum = null;
     if(matching.length){
@@ -610,9 +621,12 @@ function renderMetrics(){
     const subText = pl!=null
       ? sign(pl)+fmt(pl)+' TL ('+sign(pl)+plPct.toFixed(2)+'%)'
       : (matching.length ? 'veri bekleniyor' : 'ilk yatırımı gir');
+    const priceLine = (alis!=null || price!=null)
+      ? `<div class="val-pair"><span class="val-alis">A: ${alis!=null?fmtD(alis):'—'}</span><span class="val-satis">S: ${price!=null?fmtD(price):'—'}</span></div>`
+      : `<div class="val">— veri yok</div>`;
     div.innerHTML = `
       <div class="lbl">${s.label}</div>
-      <div class="val">${price!=null?fmtD(price)+' TL':'— veri yok'}</div>
+      ${priceLine}
       <div class="sub ${plClass}">${subText}</div>
       ${matching.length ? `<div class="sub" style="margin-top:2px;">${gramSum} g · ${matching.length} alım</div>` : ''}
     `;
@@ -642,14 +656,18 @@ function renderMetrics(){
   }
 }
 
+function pairCell(alis, satis){
+  if(alis == null && satis == null) return '<span class="ta-r cell-pair">—</span>';
+  return `<span class="ta-r cell-pair"><span class="cell-satis">${fmtD(satis)}</span><span class="cell-alis">A: ${fmtD(alis)}</span></span>`;
+}
 function renderTable(){
   const rows = [..._data].reverse();
   const makeRow = r => `<div class="tbl-row">
     <span>${dd(r.date)}</span>
-    <span class="ta-r">${fmtD(r.garanti_satis)}</span>
-    <span class="ta-r">${fmtD(r.yapikredi_satis)}</span>
-    <span class="ta-r">${fmtD(r.merkez_satis)}</span>
-    <span class="ta-r">${fmtD(r.serbest_satis)}</span>
+    ${pairCell(r.garanti_alis, r.garanti_satis)}
+    ${pairCell(r.yapikredi_alis, r.yapikredi_satis)}
+    ${pairCell(r.merkez_alis, r.merkez_satis)}
+    ${pairCell(r.serbest_alis, r.serbest_satis)}
   </div>`;
   document.getElementById('tableTop').innerHTML   = rows.slice(0,10).map(makeRow).join('') || '<div style="padding:16px;color:var(--muted);text-align:center">Henüz kayıt yok.</div>';
   document.getElementById('tableExtra').innerHTML = rows.slice(10).map(makeRow).join('');
@@ -666,17 +684,32 @@ function toggleTable(){
 
 function renderChart(){
   const labels = _data.map(r=>dd(r.date));
-  const datasets = SOURCES.map(s=>({
-    label: s.label,
-    data: _data.map(r=>r[s.key+'_satis']),
-    borderColor: s.color,
-    backgroundColor: s.color,
-    spanGaps: true,
-    tension: 0.3,
-    pointRadius: 2,
-    borderWidth: 2,
-    fill: false,
-  }));
+  const datasets = SOURCES.flatMap(s=>[
+    {
+      label: s.label + ' (satış)',
+      data: _data.map(r=>r[s.key+'_satis']),
+      borderColor: s.color,
+      backgroundColor: s.color,
+      spanGaps: true,
+      tension: 0.3,
+      pointRadius: 2,
+      borderWidth: 2,
+      borderDash: [],
+      fill: false,
+    },
+    {
+      label: s.label + ' (alış)',
+      data: _data.map(r=>r[s.key+'_alis']),
+      borderColor: s.color,
+      backgroundColor: s.color,
+      spanGaps: true,
+      tension: 0.3,
+      pointRadius: 0,
+      borderWidth: 1.5,
+      borderDash: [5,4],
+      fill: false,
+    },
+  ]);
   if(chart) chart.destroy();
   chart = new Chart(document.getElementById('priceChart').getContext('2d'), {
     type:'line',
