@@ -91,17 +91,17 @@
   },
   {
     "date": "2026-08-19",
-    "serbest_alis": 6709.11,
-    "serbest_satis": 6710.05,
+    "serbest_alis": 6717.29,
+    "serbest_satis": 6718.16,
     "serbest_kaynak": "Serbest Piyasa (genel gram altın) (direkt HTTP)",
-    "garanti_alis": 6565.18,
-    "garanti_satis": 6808.04,
+    "garanti_alis": 6582.32,
+    "garanti_satis": 6825.81,
     "garanti_kaynak": "Garanti BBVA (direkt HTTP)",
-    "yapikredi_alis": 6584.04,
-    "yapikredi_satis": 6785.49,
+    "yapikredi_alis": 6594.93,
+    "yapikredi_satis": 6796.76,
     "yapikredi_kaynak": "Yapı Kredi Bankası (direkt HTTP)",
-    "merkez_alis": 6672.81,
-    "merkez_satis": 6672.81,
-    "merkez_kaynak": "Claude web search"
+    "merkez_alis": 6711.33,
+    "merkez_satis": 6711.33,
+    "merkez_kaynak": "TCMB saat başı altın fiyatı (direkt HTTP)"
   }
 ]
