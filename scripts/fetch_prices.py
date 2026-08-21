@@ -42,6 +42,14 @@ GBP_MIN,  GBP_MAX  = 30.0,   200.0
 GOLD_MIN_SPREAD = 0.015
 GOLD_MAX_SPREAD = 0.05
 
+# Önceki güne göre günlük satış sapması — bunu aşan bir İşBankası okuması
+# gerçek piyasa hareketi değil, hatalı kaynak/sütun eşleşmesi kabul edilir
+# ve KAYDEDİLMEZ (bkz. 19.08.2026: satış 6.721 → 11.247 TL/gr, tek günde
+# ~%67 sıçrama — yanlış bir fiyat satırı okunmuştu). %8-%15 arası sapma
+# yine de kabul edilir ama loglanır; %15 üzeri kesin reddedilir.
+GOLD_WARN_DEVIATION   = 0.08
+GOLD_MAX_DEVIATION    = 0.15
+
 # Selenium kullanılabilir mi?
 SELENIUM_OK = False
 try:
@@ -650,12 +658,22 @@ def run_gold(tcmb_data, isbank_gold):
 
     tcmb_gold = tcmb_data.get("gold")
 
-    if tcmb_gold is None and isbank_gold is None:
-        log("  ❌ ALTIN: Her iki kaynak başarısız, kayıt atlanıyor.")
-        return
+    # Aşırı sapma kontrolü — GOLD_MAX_DEVIATION'ı aşan İşBankası okuması
+    # güvenilmez kabul edilip reddedilir (None yapılır); script bu durumda
+    # otomatik olarak TCMB'ye ya da (TCMB de yoksa) carry-forward'a düşer.
+    if isbank_gold and ref:
+        deviation = abs(isbank_gold["satis"] - ref) / ref
+        if deviation > GOLD_MAX_DEVIATION:
+            log(f"  ❌ ALTIN: satış {isbank_gold['satis']} öncekinden %{deviation*100:.1f} sapıyor "
+                f"(ref={ref:.2f}, sınır=%{GOLD_MAX_DEVIATION*100:.0f}) — GÜVENİLMEZ KABUL EDİLDİ, reddediliyor")
+            isbank_gold = None
+        elif deviation > GOLD_WARN_DEVIATION:
+            log(f"  ⚠  ALTIN: satış {isbank_gold['satis']} öncekinden %{deviation*100:.1f} sapıyor "
+                f"(ref={ref:.2f}), yine de kabul ediliyor (sınır=%{GOLD_MAX_DEVIATION*100:.0f})")
 
-    if isbank_gold and ref and abs(isbank_gold["satis"] - ref) / ref > 0.08:
-        log(f"  ⚠  ALTIN: satış {isbank_gold['satis']} öncekinden >%8 sapıyor (ref={ref:.2f}), TCMB ile çapraz kontrol")
+    if tcmb_gold is None and isbank_gold is None:
+        log("  ❌ ALTIN: Her iki kaynak başarısız/reddedildi, kayıt atlanıyor.")
+        return
 
     primary = isbank_gold or tcmb_gold
     entry = {
