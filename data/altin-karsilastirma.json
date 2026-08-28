@@ -211,17 +211,17 @@
   },
   {
     "date": "2026-08-28",
-    "serbest_alis": 6914.97,
-    "serbest_satis": 6916.01,
+    "serbest_alis": 6907.88,
+    "serbest_satis": 6908.74,
     "serbest_kaynak": "Serbest Piyasa (genel gram altın) (direkt HTTP)",
     "garanti_alis": 6392.68,
     "garanti_satis": 6629.45,
-    "garanti_kaynak": "Claude web search",
+    "garanti_kaynak": "önceki değer korundu (bugün çekilemedi)",
     "yapikredi_alis": 6669.34,
     "yapikredi_satis": 7069.43,
-    "yapikredi_kaynak": "Yapı Kredi Bankası (direkt HTTP)",
+    "yapikredi_kaynak": "önceki değer korundu (bugün çekilemedi)",
     "merkez_alis": 7139.0,
     "merkez_satis": 7139.0,
-    "merkez_kaynak": "Claude web search"
+    "merkez_kaynak": "önceki değer korundu (bugün çekilemedi)"
   }
 ]
