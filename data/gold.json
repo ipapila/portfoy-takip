@@ -816,10 +816,10 @@
   },
   {
     "date": "2026-09-04",
-    "alis": 6890.07,
-    "satis": 6891.0,
-    "isbank_alis": 6890.07,
-    "isbank_satis": 6891.0,
+    "alis": 6888.96,
+    "satis": 6889.83,
+    "isbank_alis": 6888.96,
+    "isbank_satis": 6889.83,
     "tcmb_alis": null,
     "tcmb_satis": null,
     "kaynak": "İşBankası (Selenium/doviz.com (genel piyasa, İşBankası'na özel değil), TCMB yok)"
