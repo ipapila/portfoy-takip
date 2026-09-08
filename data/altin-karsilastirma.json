@@ -313,5 +313,20 @@
     "merkez_alis": 6808.19,
     "merkez_satis": 6808.19,
     "merkez_kaynak": "Claude web search"
+  },
+  {
+    "date": "2026-09-08",
+    "serbest_alis": 6857.31,
+    "serbest_satis": 6858.29,
+    "serbest_kaynak": "Serbest Piyasa (genel gram altın) (direkt HTTP)",
+    "garanti_alis": 6718.35,
+    "garanti_satis": 6966.4,
+    "garanti_kaynak": "Garanti BBVA (direkt HTTP)",
+    "yapikredi_alis": 6737.04,
+    "yapikredi_satis": 6926.37,
+    "yapikredi_kaynak": "Yapı Kredi Bankası (direkt HTTP)",
+    "merkez_alis": null,
+    "merkez_satis": null,
+    "merkez_kaynak": null
   }
 ]
