@@ -866,12 +866,12 @@
   },
   {
     "date": "2026-09-11",
-    "alis": 6653.51,
-    "satis": 6835.87,
-    "isbank_alis": 6653.51,
-    "isbank_satis": 6835.87,
+    "alis": 6819.06,
+    "satis": 6820.03,
+    "isbank_alis": 6819.06,
+    "isbank_satis": 6820.03,
     "tcmb_alis": null,
     "tcmb_satis": null,
-    "kaynak": "İşBankası (anlikaltinfiyatlari (direkt HTTP), TCMB yok)"
+    "kaynak": "İşBankası (Selenium/doviz.com (genel piyasa, İşBankası'na özel değil), TCMB yok)"
   }
 ]
