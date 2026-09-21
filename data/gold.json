@@ -923,5 +923,15 @@
     "tcmb_alis": null,
     "tcmb_satis": null,
     "kaynak": "İşBankası (Selenium/bigpara (genel piyasa, İşBankası'na özel değil), TCMB yok)"
+  },
+  {
+    "date": "2026-09-21",
+    "alis": 6727.64,
+    "satis": 6912.56,
+    "isbank_alis": 6727.64,
+    "isbank_satis": 6912.56,
+    "tcmb_alis": null,
+    "tcmb_satis": null,
+    "kaynak": "İşBankası (anlikaltinfiyatlari (direkt HTTP), TCMB yok)"
   }
 ]
