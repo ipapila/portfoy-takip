@@ -493,5 +493,20 @@
     "merkez_alis": null,
     "merkez_satis": null,
     "merkez_kaynak": null
+  },
+  {
+    "date": "2026-09-24",
+    "serbest_alis": 6696.95,
+    "serbest_satis": 6697.78,
+    "serbest_kaynak": "Serbest Piyasa (genel gram altın) (direkt HTTP)",
+    "garanti_alis": 6555.05,
+    "garanti_satis": 6796.73,
+    "garanti_kaynak": "Garanti BBVA (direkt HTTP)",
+    "yapikredi_alis": 6572.04,
+    "yapikredi_satis": 6759.54,
+    "yapikredi_kaynak": "Yapı Kredi Bankası (direkt HTTP)",
+    "merkez_alis": null,
+    "merkez_satis": null,
+    "merkez_kaynak": null
   }
 ]
