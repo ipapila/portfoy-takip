@@ -1920,14 +1920,16 @@
   },
   {
     "date": "2026-10-05",
-    "alis": 64.1102,
-    "satis": 65.6681,
-    "isbank_alis": 64.1102,
-    "isbank_satis": 65.6681,
+    "alis": 63.3385,
+    "satis": 66.8589,
+    "isbank_alis": 63.3385,
+    "isbank_satis": 66.8589,
+    "carry_forward": "carry-forward 2026-10-02",
     "tcmb_alis": 64.7913,
     "tcmb_satis": 65.1291,
-    "fark_satis": 0.539,
-    "fark_alis": -0.6811,
-    "kaynak": "İşBankası+TCMB (ASP fiyat tablosu)"
+    "fark_satis": 1.7298,
+    "fark_alis": -1.4528,
+    "kaynak": "İşBankası+TCMB (carry-forward 2026-10-02)",
+    "uyari": "önceki kayıtla aynı (2026-10-02)"
   }
 ]
