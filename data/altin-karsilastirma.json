@@ -673,5 +673,20 @@
     "merkez_alis": null,
     "merkez_satis": null,
     "merkez_kaynak": null
+  },
+  {
+    "date": "2026-10-12",
+    "serbest_alis": 6609.23,
+    "serbest_satis": 6610.23,
+    "serbest_kaynak": "Serbest Piyasa (genel gram altın) (direkt HTTP)",
+    "garanti_alis": null,
+    "garanti_satis": null,
+    "garanti_kaynak": null,
+    "yapikredi_alis": null,
+    "yapikredi_satis": null,
+    "yapikredi_kaynak": null,
+    "merkez_alis": null,
+    "merkez_satis": null,
+    "merkez_kaynak": null
   }
 ]
