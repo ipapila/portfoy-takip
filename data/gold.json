@@ -1256,12 +1256,12 @@
   },
   {
     "date": "2026-11-05",
-    "alis": 6491.43,
-    "satis": 6710.04,
-    "isbank_alis": 6491.43,
-    "isbank_satis": 6710.04,
+    "alis": 6598.06,
+    "satis": 6599.06,
+    "isbank_alis": 6598.06,
+    "isbank_satis": 6599.06,
     "tcmb_alis": null,
     "tcmb_satis": null,
-    "kaynak": "İşBankası (anlikaltinfiyatlari (direkt HTTP), TCMB yok)"
+    "kaynak": "İşBankası (Selenium/doviz.com (genel piyasa, İşBankası'na özel değil), TCMB yok)"
   }
 ]
