@@ -991,15 +991,15 @@
   },
   {
     "date": "2026-11-10",
-    "serbest_alis": 6538.31,
-    "serbest_satis": 6539.32,
+    "serbest_alis": 6503.33,
+    "serbest_satis": 6504.3,
     "serbest_kaynak": "Serbest Piyasa (genel gram altın) (direkt HTTP)",
     "garanti_alis": null,
     "garanti_satis": null,
     "garanti_kaynak": null,
     "yapikredi_alis": 6414.73,
     "yapikredi_satis": 6614.94,
-    "yapikredi_kaynak": "Yapı Kredi Bankası (direkt HTTP)",
+    "yapikredi_kaynak": "önceki değer korundu (bugün çekilemedi)",
     "merkez_alis": null,
     "merkez_satis": null,
     "merkez_kaynak": null
