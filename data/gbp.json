@@ -2354,14 +2354,14 @@
   },
   {
     "date": "2026-11-24",
-    "alis": 64.6169,
-    "satis": 68.2264,
-    "isbank_alis": 64.6169,
-    "isbank_satis": 68.2264,
+    "alis": 64.6573,
+    "satis": 68.2808,
+    "isbank_alis": 64.6573,
+    "isbank_satis": 68.2808,
     "tcmb_alis": 65.8856,
     "tcmb_satis": 66.229,
-    "fark_satis": 1.9974,
-    "fark_alis": -1.2687,
+    "fark_satis": 2.0518,
+    "fark_alis": -1.2283,
     "kaynak": "İşBankası+TCMB (ASP fiyat tablosu)"
   }
 ]
